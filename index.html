@@ -1,1 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>FieldScan Pro</title>
+  <link href="https://fonts.googleapis.com/css2 family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    :root {
+      --bg: #FFFFFF;           
+      --card: #F1F3F5;        
+      --card-light: #E9ECEF;
+      --primary: #0056b3;     
+      --text: #000000;        
+      --muted: #495057;       
+      --danger: #C00000;      
+      --success: #157347;     
+      --border: #ADB5BD;      
+    }
 
+    body { 
+      font-family: 'Inter', sans-serif; 
+      background: var(--bg); 
+      color: var(--text); 
+      width: 100%; 
+      overflow-x: hidden; 
+      line-height: 1.5;
+    }
+    
+    .main { 
+      width: 100%; 
+      max-width: 500px; 
+      margin: 0 auto; 
+      padding: 20px 16px 100px 16px; 
+      min-height: 100vh; 
+    }
+
+    /* SUB-CONSOLE PROJECTS CONTEXT SEGMENT BAR TABS */
+    .segment-bar {
+      display: flex;
+      background: var(--card);
+      padding: 4px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+      border: 2px solid var(--text);
+    }
+    .segment-btn {
+      flex: 1;
+      padding: 12px 6px;
+      border: none;
+      background: transparent;
+      font-weight: 800;
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: 10px;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: center;
+    }
+    .segment-btn.active {
+      background: var(--text);
+      color: #fff;
+    }
+
+    .page-header { 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      margin-bottom: 25px; 
+      padding-bottom: 15px; 
+      border-bottom: 3px solid var(--text); 
+    }
+    .header-group { display: flex; align-items: center; gap: 12px; }
+    .home-btn { background: var(--text); border: none; color: white; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px;}
+    h2 { font-size: 24px; font-weight: 800; color: var(--text); }
+
+    .card { 
+      background: var(--bg); 
+      border-radius: 20px; 
+      padding: 20px; 
+      border: 2px solid var(--border); 
+      margin-bottom: 15px; 
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    label { 
+      display: block; 
+      font-weight: 800; 
+      font-size: 16px; 
+      color: var(--text); 
+      margin-bottom: 6px; 
+      margin-top: 12px; 
+    }
+
+    input, select, textarea { 
+      width: 100%; 
+      padding: 16px; 
+      margin-bottom: 10px; 
+      border-radius: 12px; 
+      border: 2px solid var(--text); 
+      background: white; 
+      color: black; 
+      font-size: 20px !important; 
+      font-weight: 500;
+    }
+    
+    input:disabled, select:disabled, textarea:disabled { background: #e9ecef; border-color: #adb5bd; color: #495057; opacity: 1; }
+
+    .action-btn { 
+      background: var(--text); 
+      color: white; 
+      border: none; 
+      padding: 20px; 
+      border-radius: 15px; 
+      font-weight: 900; 
+      width: 100%; 
+      font-size: 20px; 
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+    }
+
+    .modal-overlay { 
+      position: fixed; 
+      inset: 0; 
+      background: rgba(255,255,255,0.95); 
+      display: none; 
+      justify-content: center; 
+      align-items: center; 
+      z-index: 5000; 
+      padding: 15px; 
+    }
+    .modal { 
+      background: var(--bg); 
+      width: 100%; 
+      max-width: 480px; 
+      padding: 25px; 
+      border-radius: 24px; 
+      border: 3px solid var(--text); 
+      max-height: 92vh; 
+      overflow-y: auto; 
+    }
+
+    .page-view { display: none; }
+    .active-view { display: block; }
+
+    /* TIMELINE DISPATCH FEED DESIGN */
+    .timeline-feed { position: relative; padding-left: 20px; border-left: 3px solid #000; margin-top: 15px; margin-left: 10px;}
+    .timeline-node { position: relative; margin-bottom: 25px; }
+    .timeline-node::before {
+      content: ''; position: absolute; left: -27px; top: 4px;
+      background: #fff; border: 4px solid var(--primary);
+      width: 14px; height: 14px; border-radius: 50%;
+    }
+
+    #report-print-container { display: none; background: #ffffff; color: #000000; padding: 0; }
+    .print-table { width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 18px; font-size: 14px; }
+    .print-table th, .print-table td { border: 1px solid #000000; padding: 8px 10px; text-align: left; }
+    .print-table th { background: #f2f2f2; font-weight: 800; text-transform: uppercase; }
+    .report-thumb { max-width: 140px; max-height: 140px; object-fit: cover; border: 2px solid #000000; margin: 6px; border-radius: 6px; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #report-print-container, #report-print-container * { visibility: visible; }
+      #report-print-container { display: block !important; position: absolute; left: 0; top: 0; width: 100%; }
+      @page { size: A4; margin: 15mm; }
+      .page-break { page-break-before: always; padding-top: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app">
+    <main class="main">
+      
+      <div id="view-dashboard" class="page-view active-view">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <h2 style="color:var(--primary); font-weight:800;"><i class="fas fa-compass"></i> FieldScan Pro</h2>
+          <button class="action-btn" style="width:auto; padding:10px 16px; font-size:14px;" onclick="openModal('project')">+ Project</button>
+        </div>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:20px;">
+          <div class="card" style="margin:0; text-align:center; background:var(--card); border-color:#000;" onclick="showPage('vendors')">
+            <div id="badge-vendors" style="font-size:28px; font-weight:900;">--</div>
+            <small style="font-weight:800; text-transform:uppercase; font-size:11px;">Subcontractors</small>
+          </div>
+          <div class="card" style="margin:0; text-align:center; background:var(--card); border-color:#000;" onclick="showPage('reports')">
+            <div style="font-size:28px;"><i class="fas fa-print"></i></div>
+            <small style="font-weight:800; text-transform:uppercase; font-size:11px;">Reports Engine</small>
+          </div>
+        </div>
+
+        <h3 style="font-weight:800; margin-bottom:12px; text-transform:uppercase; font-size:14px; letter-spacing:0.5px;">Active Project Scopes</h3>
+        <div id="project-master-list"></div>
+      </div>
+
+      <div id="view-project-console" class="page-view">
+        <div class="page-header">
+          <div class="header-group">
+            <button class="home-btn" onclick="showPage('dashboard')"><i class="fas fa-home"></i></button>
+            <h2 id="console-title-text">Project Space</h2>
+          </div>
+        </div>
+
+        <div class="segment-bar">
+          <button class="segment-btn active" id="seg-btn-profile" onclick="switchConsoleSegment('profile')">Client</button>
+          <button class="segment-btn" id="seg-btn-takeoff" onclick="switchConsoleSegment('takeoff')">Take-Off</button>
+          <button class="segment-btn" id="seg-btn-progress" onclick="switchConsoleSegment('progress')">Progress</button>
+        </div>
+
+        <div id="console-seg-profile" class="console-tab-window active-view">
+          <div class="card" style="border-left:6px solid var(--primary);">
+            <h4 style="text-transform:uppercase; font-size:13px; color:var(--muted); margin-bottom:5px;">Customer Profile Meta</h4>
+            <h3 id="c-meta-name" style="font-size:24px; font-weight:900; margin-bottom:8px;">--</h3>
+            <p style="font-size:16px; font-weight:700; margin-bottom:4px;"><i class="fas fa-map-marker-alt"></i> <span id="c-meta-loc">--</span></p>
+            <p style="font-size:16px; font-weight:700; margin-bottom:12px;"><i class="fas fa-phone"></i> <a id="c-meta-phone" href="#" style="color:var(--primary); text-decoration:none;">--</a></p>
+            <textarea id="c-meta-notes" disabled style="font-size:15px !important; background:var(--card-light); min-height:80px; margin:0; border-color:var(--border);"></textarea>
+            <button class="action-btn" style="margin-top:15px; font-size:14px; padding:12px; background:var(--card-light); color:#000; border:1px solid #000;" onclick="triggerEditProjectProfile()">Modify Client Records</button>
+          </div>
+        </div>
+
+        <div id="console-seg-takeoff" class="console-tab-window page-view">
+          <div style="display:flex; justify-content:between; align-items:center; margin-bottom:15px; gap:10px;">
+            <h3 style="font-size:16px; font-weight:800; flex:1;">DIMENSIONAL SURVEY ITEMS</h3>
+            <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px;" onclick="openModal('takeoff_item')">+ Log Item</button>
+          </div>
+          <div id="console-takeoff-list"></div>
+        </div>
+
+        <div id="console-seg-progress" class="console-tab-window page-view">
+          <div style="display:flex; justify-content:between; align-items:center; margin-bottom:15px; gap:10px;">
+            <h3 style="font-size:16px; font-weight:800; flex:1;">TIMELINE LOG FEED</h3>
+            <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px; background:var(--success);" onclick="openModal('progress_entry')">+ Update Status</button>
+          </div>
+          <div id="console-progress-feed" class="timeline-feed"></div>
+        </div>
+      </div>
+
+      <div id="view-vendors" class="page-view">
+        <div class="page-header">
+          <div class="header-group">
+            <button class="home-btn" onclick="showPage('dashboard')"><i class="fas fa-home"></i></button>
+            <h2>Subcontractors</h2>
+          </div>
+          <button class="action-btn" style="width:auto; padding:10px 16px;" onclick="openModal('vendor')">+ Vendor</button>
+        </div>
+        <div id="vendor-master-list"></div>
+      </div>
+
+      <div id="view-reports" class="page-view">
+        <div class="page-header">
+          <div class="header-group">
+            <button class="home-btn" onclick="showPage('dashboard')"><i class="fas fa-home"></i></button>
+            <h2>Reports Console</h2>
+          </div>
+        </div>
+        <div class="card">
+          <label>SELECT PROJECT ARCHIVE TRACE</label>
+          <select id="rep-project-sel" onchange="handleReportOptionsPopulation()"></select>
+
+          <label>OUTPUT DOCUMENT TEMPLATE CONFIGURATION</label>
+          <select id="rep-template-sel"></select>
+
+          <button class="action-btn" style="background:var(--primary); margin-top:15px;" onclick="compileFieldReport()">Compile Document Bundle</button>
+        </div>
+
+        <div id="report-onscreen-preview-card" class="card" style="display:none; border:3px dashed var(--text);">
+          <h4 style="text-transform:uppercase; font-weight:800; margin-bottom:10px;"><i class="fas fa-eye"></i> Production Print Preview</h4>
+          <div id="report-preview-viewport" style="max-height:350px; overflow-y:auto; font-size:12px; background:#fff; border:1px solid var(--border); padding:10px;"></div>
+          <button class="action-btn" style="margin-top:15px; background:var(--success);" onclick="window.print()"><i class="fas fa-print"></i> Dispatch To Paper A4</button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <div id="report-print-container"></div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h3 id="modalTitle">Form</h3>
+      <div id="modalBody" style="margin-top:15px;"></div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="action-btn" style="background:#444" onclick="closeModal()">Cancel</button>
+        <button class="action-btn" id="modalSubmit">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // BACKEND SCRIPT CONNECTION DISPATCH 
+    // Paste your Google sheet deployment URL string between quotes below:
+    // ==========================================
+    const GAS_URL = "YOUR_DEPLOYED_WEB_APP_URL_HERE"; 
+                     
+    async function callApi(action, data = {}) {
+      try {
+        console.log("SENDING API CALL:", action);
+        const response = await fetch(GAS_URL, {
+          method: "POST",
+          body: JSON.stringify({ action: action, data: data }),
+        });
+        return await response.json();
+      } catch (err) {
+        console.error("TRANSMISSION ERROR:", err);
+        return null;
+      }
+    }
+    
+    let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [] };
+    let currentSelectedProjectId = null;
+
+    window.onload = () => { refreshMasterDashboard(); };
+
+    function refreshMasterDashboard() {
+      callApi('getStats', {}).then(stats => {
+        if(stats) document.getElementById('badge-vendors').innerText = stats.activeVendors;
+      });
+      callApi('getProjects', {}).then(data => {
+        cache.projects = data || [];
+        const container = document.getElementById('project-master-list');
+        if(!data || data.length === 0) {
+          container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px;">No projects registered. Click "+ Project" to begin field tracking operations.</p>`;
+          return;
+        }
+        container.innerHTML = data.map(p => `
+          <div class="card" onclick="loadProjectConsoleHub('${p.projectId}')" style="border-left: 5px solid ${p.projectStatus === 'Active' ? 'var(--success)' : 'var(--muted)'}; cursor:pointer;">
+            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
+              <strong style="font-size:20px; color:#000;">${p.clientName}</strong>
+              <span style="font-size:12px; font-weight:900; background:#000; color:#fff; padding:3px 8px; border-radius:4px;">${p.projectStatus.toUpperCase()}</span>
+            </div>
+            <div style="font-size:15px; font-weight:600; color:var(--primary);"><i class="fas fa-map-marker-alt"></i> ${p.siteLocation}</div>
+            <div style="font-size:12px; color:var(--muted); font-weight:700; margin-top:8px; border-top:1px dashed #ccc; padding-top:4px;">Reference Token Key ID: ${p.projectId}</div>
+          </div>
+        `).join('');
+      });
+    }
+
+    function loadProjectConsoleHub(projectId) {
+      currentSelectedProjectId = projectId;
+      const p = cache.projects.find(item => item.projectId === projectId);
+      if(!p) return;
+
+      document.getElementById('console-title-text').innerText = p.clientName;
+      document.getElementById('c-meta-name').innerText = p.clientName;
+      document.getElementById('c-meta-loc').innerText = p.siteLocation;
+      document.getElementById('c-meta-phone').innerText = p.clientPhone;
+      document.getElementById('c-meta-phone').href = "tel:" + p.clientPhone;
+      document.getElementById('c-meta-notes').value = p.notes || "No standard site parameters stored.";
+
+      switchConsoleSegment('profile');
+      showPage('project-console');
+    }
+
+    function switchConsoleSegment(segKey) {
+      document.querySelectorAll('.console-tab-window').forEach(w => w.classList.remove('active-view'));
+      document.querySelectorAll('.console-tab-window').forEach(w => w.classList.add('page-view'));
+      document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+
+      document.getElementById('console-seg-' + segKey).classList.remove('page-view');
+      document.getElementById('console-seg-' + segKey).classList.add('active-view');
+      document.getElementById('seg-btn-' + segKey).classList.add('active');
+
+      if (segKey === 'takeoff') loadTakeOffListings();
+      if (segKey === 'progress') loadProgressTimelineFeed();
+    }
+
+    function loadTakeOffListings() {
+      const container = document.getElementById('console-takeoff-list');
+      container.innerHTML = `<p style="text-align:center; padding:15px; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Reading items matrix...</p>`;
+      
+      callApi('getTakeOffItems', {}).then(items => {
+        cache.takeoffs = items || [];
+        const projectItems = (items || []).filter(i => i.projectId === currentSelectedProjectId);
+        if(projectItems.length === 0) {
+          container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">Survey framework blank. Appending dimensional metrics generates the Take-Off matrix sheets.</p>`;
+          return;
+        }
+        container.innerHTML = projectItems.map(i => `
+          <div class="card" style="background:#fff; border-color:#000;">
+            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:6px;">
+              <div>
+                <span style="font-size:11px; font-weight:800; background:var(--primary); color:#fff; padding:2px 6px; border-radius:4px; text-transform:uppercase;">${i.tradeCategory}</span>
+                <h4 style="font-size:18px; font-weight:800; margin-top:4px;">${i.roomArea}</h4>
+              </div>
+              <strong style="font-size:22px; color:var(--success);">${i.quantity} <span style="font-size:14px;">${i.unit}</span></strong>
+            </div>
+            <p style="font-size:15px; font-weight:600; color:#000;">${i.description}</p>
+            ${i.scopeNotes ? `<div style="font-size:13px; color:var(--muted); font-style:italic; margin-top:6px; background:var(--card); padding:6px; border-radius:6px;">Rem: ${i.scopeNotes}</div>` : ''}
+            ${i.beforePhotoUrl ? `<img src="${getDirectImageUrl(i.beforePhotoUrl)}" style="width:100%; height:140px; object-fit:cover; border-radius:10px; margin-top:10px; border:1px solid #000;">` : ''}
+          </div>
+        `).join('');
+      });
+    }
+
+    function loadProgressTimelineFeed() {
+      const container = document.getElementById('console-progress-feed');
+      container.innerHTML = `<p style="text-align:center; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Mapping history logs...</p>`;
+      
+      callApi('getProgressLogs', {}).then(logs => {
+        cache.progressLogs = logs || [];
+        const projectLogs = (logs || []).filter(l => l.projectId === currentSelectedProjectId);
+        if(projectLogs.length === 0) {
+          container.innerHTML = `<p style="color:var(--muted); font-style:italic; padding-left:10px; font-size:14px;">No timeline updates logged. Weekly progress reports build client reports automatically.</p>`;
+          return;
+        }
+        container.innerHTML = projectLogs.map(l => `
+          <div class="timeline-node">
+            <div style="font-size:12px; font-weight:800; color:var(--muted);">${l.dateRecorded}</div>
+            <div style="background:var(--card); padding:14px; border-radius:14px; border:1px solid var(--border); margin-top:5px;">
+              <div style="display:flex; justify-content:space-between; font-weight:800; font-size:14px; margin-bottom:5px;">
+                <span style="color:var(--primary); text-transform:uppercase;">[${l.tradeCategory}]</span>
+                <span style="color:var(--success);">${l.completionPercentage}% Complete</span>
+              </div>
+              <p style="font-size:15px; font-weight:600; color:#000;">${l.commentNarrative}</p>
+              ${l.progressPhotoUrl ? `<img src="${getDirectImageUrl(l.progressPhotoUrl)}" style="width:100%; height:150px; object-fit:cover; border-radius:10px; margin-top:8px; border:1px solid #000;">` : ''}
+            </div>
+          </div>
+        `).join('');
+      });
+    }
+
+    function triggerEditProjectProfile() {
+      const p = cache.projects.find(item => item.projectId === currentSelectedProjectId);
+      if(p) openModal('project', p);
+    }
+
+    function refreshVendorsListView() {
+      callApi('getVendors', {}).then(data => {
+        cache.vendors = data || [];
+        const container = document.getElementById('vendor-master-list');
+        container.innerHTML = (data || []).map(v => `
+          <div class="card" onclick="openModal('vendor', ${JSON.stringify(v)})">
+            <strong style="font-size:20px;">${v.company}</strong><br>
+            <span style="font-weight:800; color:var(--success); font-size:14px; text-transform:uppercase;">${v.trade}</span><br>
+            <span style="font-size:13px; font-weight:700; color:var(--muted);"><i class="fas fa-user"></i> Rep: ${v.contactName} | <i class="fas fa-phone"></i> ${v.phone}</span>
+          </div>
+        `).join('');
+      });
+    }
+
+    function openModal(type, editData = null) {
+      const body = document.getElementById('modalBody');
+      const submit = document.getElementById('modalSubmit');
+      const title = document.getElementById('modalTitle');
+      const overlay = document.getElementById('modalOverlay');
+    
+      const isEdit = !!editData; overlay.style.display = 'flex'; body.innerHTML = ''; submit.disabled = false;
+      const largeInput = 'style="font-size: 20px; padding: 12px; margin-bottom: 5px;"';
+      const labelStyle = 'style="font-size: 16px; color: var(--text); font-weight:800; display: block; margin-top: 10px; margin-bottom: 4px;"';
+    
+      if (type === 'project') {
+        const uniqueId = isEdit ? editData.projectId : "PRJ-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = isEdit ? "Modify Project Profile" : "Register New Jobsite";
+        body.innerHTML = `
+          <label ${labelStyle}>Client / Enterprise Name</label><input id="p_client" value="${isEdit?editData.clientName:''}" ${largeInput}>
+          <label ${labelStyle}>Geographic Site Location</label><input id="p_loc" value="${isEdit?editData.siteLocation:''}" ${largeInput}>
+          <label ${labelStyle}>Client Mobile Route (11 Digits)</label><input id="p_phone" type="tel" maxlength="11" value="${isEdit?editData.clientPhone:''}" ${largeInput}>
+          <label ${labelStyle}>Client Correspondence Email</label><input id="p_email" type="email" value="${isEdit?editData.clientEmail:''}" ${largeInput}>
+          <label ${labelStyle}>Project Tracking Phase Status</label>
+          <select id="p_status" ${largeInput}>
+            <option value="Active" ${isEdit&&editData.projectStatus==='Active'?'selected':''}>Active Tracking Run</option>
+            <option value="In Planning" ${isEdit&&editData.projectStatus==='In Planning'?'selected':''}>In Planning / Valuation</option>
+            <option value="Handed Over" ${isEdit&&editData.projectStatus==='Handed Over'?'selected':''}>Handed Over / Closed</option>
+          </select>
+          <label ${labelStyle}>Strategic Project Constraints / Notes</label><textarea id="p_notes" rows="2" ${largeInput}>${isEdit?editData.notes:''}</textarea>
+        `;
+        submit.onclick = () => {
+          submit.disabled = true;
+          const payload = { projectId: uniqueId, clientName: document.getElementById('p_client').value, siteLocation: document.getElementById('p_loc').value, clientPhone: document.getElementById('p_phone').value, clientEmail: document.getElementById('p_email').value, projectStatus: document.getElementById('p_status').value, notes: document.getElementById('p_notes').value };
+          callApi(isEdit?'updateProject':'saveProject', payload).then(() => { closeModal(); refreshMasterDashboard(); if(isEdit) loadProjectConsoleHub(uniqueId); });
+        };
+      }
+      else if (type === 'takeoff_item') {
+        const uniqueId = "JOB-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = "Log Quantity Measure";
+        let capturedPhotoUrl = "";
+        body.innerHTML = `
+          <label ${labelStyle}>Room / Structural Area Site Node</label><input id="t_area" placeholder="e.g. Master Bedroom, Outer Fence" ${largeInput}>
+          <label ${labelStyle}>Operational Trade Classification</label><input id="t_cat" placeholder="e.g. Tiling, Masonry, Painting" ${largeInput}>
+          <label ${labelStyle}>Specific Engineering Scope Description</label><input id="t_desc" placeholder="e.g. Install high-gloss floor tiles" ${largeInput}>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <div><label ${labelStyle}>Quantity Cost Value</label><input id="t_qty" type="number" step="0.01" ${largeInput}></div>
+            <div><label ${labelStyle}>Unit Parameter Label</label><select id="t_unit" ${largeInput}><option value="sqm">Square Meters (sqm)</option><option value="cu.m">Cubic Meters (cu.m)</option><option value="meters">Linear Meters (m)</option><option value="pcs">Pieces (pcs)</option></select></div>
+          </div>
+          <label ${labelStyle}>Field Inspector Remarks</label><textarea id="t_notes" rows="2" ${largeInput}></textarea>
+          <label class="action-btn" style="background:var(--text); color:#fff; display:block; text-align:center; padding:12px; cursor:pointer; margin-top:10px;"><i class="fas fa-camera"></i> Snap Site Measurement Proof<input type="file" id="t_photo" accept="image/*" style="display:none"></label>
+          <div id="t_photo_preview" style="margin-top:10px; font-weight:800; font-size:12px; color:var(--success); text-align:center;"></div>
+        `;
+        document.getElementById('t_photo').onchange = (e) => {
+          const file = e.target.files[0]; if(!file) return;
+          document.getElementById('t_photo_preview').innerText = "COMPRESSING RUN STREAMS...";
+          const r = new FileReader(); r.onload = async (evt) => {
+            const comp = await compressImage(evt.target.result);
+            document.getElementById('t_photo_preview').innerText = "DISPATCHING IMAGE BLOB TO CLOUD DRIVES...";
+            callApi('uploadImage', { base64: comp, name: "survey_" + uniqueId + ".jpg" }).then(res => { if(res.url){ capturedPhotoUrl = res.url; document.getElementById('t_photo_preview').innerText = "✅ PHYSICAL CAPTURE IMAGE BUFFER SEAMLESSLY TRACED"; } });
+          }; r.readAsDataURL(file);
+        };
+        submit.onclick = () => {
+          submit.disabled = true;
+          const payload = { itemId: uniqueId, projectId: currentSelectedProjectId, roomArea: document.getElementById('t_area').value, tradeCategory: document.getElementById('t_cat').value, description: document.getElementById('t_desc').value, quantity: document.getElementById('t_qty').value, unit: document.getElementById('t_unit').value, beforePhotoUrl: capturedPhotoUrl, scopeNotes: document.getElementById('t_notes').value };
+          callApi('saveTakeOffItem', payload).then(() => { closeModal(); loadTakeOffListings(); });
+        };
+      }
+      else if (type === 'progress_entry') {
+        const uniqueId = "LOG-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = "Log Project Update";
+        let capturedPhotoUrl = "";
+        body.innerHTML = `
+          <label ${labelStyle}>Core Specialized Trade Underway</label><input id="l_cat" placeholder="e.g. Painting, Plumbing" ${largeInput}>
+          <label ${labelStyle}>Estimated Work Completion State Bar</label><select id="l_pct" ${largeInput}><option value="10">Initialized / Setup (10%)</option><option value="35">Ongoing Progress (35%)</option><option value="75">Substantial Assembly State (75%)</option><option value="100">Work Unit Completed Clear (100%)</option></select>
+          <label ${labelStyle}>Site Progress Status Notes / Comments</label><textarea id="l_comm" rows="3" placeholder="Provide field execution summary logs here..." ${largeInput}></textarea>
+          <label class="action-btn" style="background:var(--success); color:#fff; display:block; text-align:center; padding:12px; cursor:pointer; margin-top:10px;"><i class="fas fa-camera"></i> Snap Progress Photo Proof<input type="file" id="l_photo" accept="image/*" style="display:none"></label>
+          <div id="l_photo_preview" style="margin-top:10px; font-weight:800; font-size:12px; color:var(--success); text-align:center;"></div>
+        `;
+        document.getElementById('l_photo').onchange = (e) => {
+          const file = e.target.files[0]; if(!file) return;
+          document.getElementById('l_photo_preview').innerText = "REDUCING PHOTO BYTE DENSITY MATRIX...";
+          const r = new FileReader(); r.onload = async (evt) => {
+            const comp = await compressImage(evt.target.result);
+            document.getElementById('l_photo_preview').innerText = "STREAMING BINARY BYTES INTO DRIVE INFRASTRUCTURE...";
+            callApi('uploadImage', { base64: comp, name: "progress_" + uniqueId + ".jpg" }).then(res => { if(res.url){ capturedPhotoUrl = res.url; document.getElementById('l_photo_preview').innerText = "✅ TIMELINE METRIC PICTURE DATA STREAM HOISTED SECURELY"; } });
+          }; r.readAsDataURL(file);
+        };
+        submit.onclick = () => {
+          submit.disabled = true;
+          const payload = { logId: uniqueId, projectId: currentSelectedProjectId, tradeCategory: document.getElementById('l_cat').value, completionPercentage: document.getElementById('l_pct').value, commentNarrative: document.getElementById('l_comm').value, progressPhotoUrl: capturedPhotoUrl };
+          callApi('saveProgressLog', payload).then(() => { closeModal(); loadProgressTimelineFeed(); });
+        };
+      }
+      else if (type === 'vendor') {
+        const uniqueId = isEdit ? editData.vendorId : "VND-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = isEdit ? "Subcontractor SLA Ledger Row" : "Add Vendor Account";
+        body.innerHTML = `
+          <label ${labelStyle}>Corporate Contracting Company Entity Name</label><input id="v_comp" value="${isEdit?editData.company:''}" ${largeInput}>
+          <label ${labelStyle}>Operational Core Trade Scope</label><input id="v_trade" value="${isEdit?editData.trade:''}" ${largeInput}>
+          <label ${labelStyle}>Account Executive Officer Point Person</label><input id="v_name" value="${isEdit?editData.contactName:''}" ${largeInput}>
+          <label ${labelStyle}>Corporate Mobile Line Channels</label><input id="v_phone" value="${isEdit?editData.phone:''}" ${largeInput}>
+          <label ${labelStyle}>Enterprise Correspondence Network Email</label><input id="v_email" value="${isEdit?editData.email:''}" ${largeInput}>
+        `;
+        submit.onclick = () => {
+          submit.disabled = true;
+          const payload = { vendorId: uniqueId, company: document.getElementById('v_comp').value, trade: document.getElementById('v_trade').value, contactName: document.getElementById('v_name').value, phone: document.getElementById('v_phone').value, email: document.getElementById('v_email').value };
+          callApi(isEdit?'updateVendor':'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
+        };
+      }
+    }
+
+    function compressImage(base64Str) {
+      return new Promise((resolve) => {
+        const img = new Image(); img.src = base64Str; img.onload = () => {
+          const canvas = document.createElement('canvas'); let w = img.width; let h = img.height;
+          if (w > h) { if (w > 1000) { h *= 1000 / w; w = 1000; } } else { if (h > 1000) { w *= 1000 / h; h = 1000; } }
+          canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+          let q = 0.8; let res = canvas.toDataURL('image/jpeg', q);
+          while (res.length > 266000 && q > 0.15) { q -= 0.1; res = canvas.toDataURL('image/jpeg', q); }
+          resolve(res);
+        };
+      });
+    }
+
+    function getDirectImageUrl(url) { if (!url || !url.includes('drive.google.com')) return url; const id = url.split('/d/')[1]?.split('/')[0] || url.split('id=')[1]?.split('&')[0]; return `https://drive.google.com/thumbnail?id=${id}&sz=w800`; }
+    function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+    function toSheetDate(dStr) { if (!dStr) return ""; const [y, m, d] = dStr.split('-'); return `${d}/${m}/${y}`; }
+    function fromSheetDate(dStr) { if (!dStr || !dStr.includes('/')) return ""; const [d, m, y] = dStr.split('/'); return `${y}-${m}-${d}`; }
+
+    function showPage(p) {
+      document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active-view'));
+      const target = document.getElementById('view-' + p);
+      if (target) { target.classList.add('active-view'); window.scrollTo(0,0); }
+      if (p === 'dashboard') refreshMasterDashboard();
+      if (p === 'vendors') refreshVendorsListView();
+      if (p === 'reports') initReportsConsoleEngine();
+    }
+
+    function toggleMoreMenu(e) { e.stopPropagation(); document.getElementById('moreMenu').classList.toggle('show'); }
+    document.addEventListener('click', () => { const m = document.getElementById('moreMenu'); if(m) m.classList.remove('show'); });
+
+    function initReportsConsoleEngine() {
+      const pipeline = [ callApi('getProjects', {}), callApi('getTakeOffItems', {}), callApi('getProgressLogs', {}) ];
+      Promise.all(pipeline).then(([p, t, l]) => {
+        cache.projects = p || []; cache.takeoffs = t || []; cache.progressLogs = l || [];
+        const pSel = document.getElementById('rep-project-sel');
+        pSel.innerHTML = '<option value="">-- Choose Field Project Instance --</option>' + cache.projects.map(item => `<option value="${item.projectId}">${item.clientName} [Ref: ${item.projectId}]</option>`).join('');
+        document.getElementById('rep-template-sel').innerHTML = "<option value=''>-- Configure Project Reference Filter Options First --</option>";
+        document.getElementById('report-onscreen-preview-card').style.display = "none";
+      });
+    }
+
+    function handleReportOptionsPopulation() {
+      const pId = document.getElementById('rep-project-sel').value;
+      const tSel = document.getElementById('rep-template-sel');
+      if(!pId) { tSel.innerHTML = "<option value=''>-- Choose Valid Project Trace Entry Rows --</option>"; return; }
+      
+      tSel.innerHTML = `
+        <option value="">-- Choose Target Document Matrix Setup --</option>
+        <option value="survey_complete">Comprehensive Quantity Take-Off Sheet Manifest</option>
+        <option value="progress_timeline">Chronological Construction Progress Audit Timeline</option>
+        <option value="master_dossier">The Complete Executive Portfolio (Take-Off + Field Logs)</option>
+      `;
+    }
+
+    function compileFieldReport() {
+      const pId = document.getElementById('rep-project-sel').value;
+      const layout = document.getElementById('rep-template-sel').value;
+      if (!pId || !layout) { alert("Please allocate accurate selection profile configurations."); return; }
+      
+      const projectItem = cache.projects.find(item => item.projectId === pId);
+      
+      // ==========================================
+      // CORPORATE REPORT GRAPHIC HEADER ENGINE
+      // Configure your business asset token image url cleanly below
+      // ==========================================
+      const logoUrl = "YOUR_LOGO_URL_HERE"; 
+
+      let headerStr = `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 3px solid #000000; margin-bottom: 20px; gap: 15px;">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <img src="${logoUrl}" alt="Logo" style="height: 65px; max-width: 160px; object-fit: contain; font-size: 10px;" onerror="this.style.display='none';">
+            <div style="text-align: left;">
+              <h2 style="font-size: 22px; font-weight: 800; letter-spacing: 0.5px; margin: 0; line-height: 1.2; color: #000000;">FIELDSCAN PRO OPERATIONS COMPLIANCE SYSTEM</h2>
+              <p style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-top: 4px; margin-bottom: 0; color: var(--muted);">Official Scope Verification & Progress Timeline Documentation</p>
+            </div>
+          </div>
+          <div style="text-align: right; font-size: 12px; font-weight: 800; white-space: nowrap; padding-left: 15px;">
+            RUN SYNC DATE:<br><span style="font-family: monospace; font-size: 13px;">${new Date().toLocaleDateString()}</span>
+          </div>
+        </div>
+        <div style="background:#f8f9fa; border:1px solid #000; padding:12px; border-radius:10px; font-size:14px; font-weight:700; margin-bottom:20px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div>CLIENT ENTITY Name: <span style="font-weight:500;">${projectItem.clientName}</span><br>JOBSITE COORDINATE: <span style="font-weight:500;">${projectItem.siteLocation}</span></div>
+          <div style="text-align:right;">PROJECT INDEX TOKEN: <span style="font-family:monospace;">${projectItem.projectId}</span><br>TRACK STATE STATUS: <span style="font-weight:800; text-transform:uppercase;">[${projectItem.projectStatus}]</span></div>
+        </div>
+      `;
+      
+      let contentHtml = "";
+      const filteredTakeoffs = cache.takeoffs.filter(item => item.projectId === pId);
+      const filteredProgress = cache.progressLogs.filter(item => item.projectId === pId);
+
+      if (layout === "survey_complete" || layout === "master_dossier") {
+        contentHtml += `
+          <h3 style="font-size:16px; margin-bottom:8px; text-transform:uppercase; border-bottom:1px solid #000; padding-bottom:4px;">I. Quantity Take-Off & Structural Dimensions Matrix</h3>
+          <table class="print-table">
+            <thead><tr><th>Structural Area Node</th><th>Specialized Trade</th><th>Scope Task Specification Description</th><th>Measured Dimension</th></tr></thead>
+            <tbody>
+              ${filteredTakeoffs.map(t => `<tr><td><strong>${t.roomArea}</strong></td><td>${t.tradeCategory}</td><td>${t.description}${t.scopeNotes? `<br><small style="color:#555; font-style:italic;">Note: ${t.scopeNotes}</small>`:''}</td><td><strong>${t.quantity} ${t.unit}</strong></td></tr>`).join('') || '<tr><td colspan="4">No survey items registered inside structural parameters.</td></tr>'}
+            </tbody>
+          </table>
+        `;
+      }
+
+      if (layout === "progress_timeline" || layout === "master_dossier") {
+        contentHtml += `
+          <h3 style="font-size:16px; margin-top:25px; margin-bottom:8px; text-transform:uppercase; border-bottom:1px solid #000; padding-bottom:4px;">${layout === 'master_dossier'?'II':'I'}. Project Field Execution Progress Timeline</h3>
+          <div style="position:relative; padding-left:15px; border-left:2px solid #000; margin-top:10px; margin-left:5px;">
+            ${filteredProgress.map(l => `
+              <div style="margin-bottom:18px; position:relative;">
+                <div style="font-size:11px; font-weight:800; color:#555;">${l.dateRecorded} | TRADE FIELD: <span style="text-transform:uppercase; color:var(--primary);">${l.tradeCategory}</span></div>
+                <div style="font-size:14px; font-weight:700; color:#000; margin-top:2px;">
+                  Metrics Clearance State Level: <span style="color:var(--success); font-weight:800;">${l.completionPercentage}% Done</span>
+                </div>
+                <p style="font-size:13px; font-weight:500; color:#333; margin-top:3px; font-style:italic;">"${l.commentNarrative}"</p>
+              </div>
+            `).join('') || '<p style="font-style:italic; font-size:13px;">No physical timeline history rows processed yet.</p>'}
+          </div>
+        `;
+      }
+
+      const totalCompiledPackage = headerStr + contentHtml;
+      document.getElementById('report-preview-viewport').innerHTML = totalCompiledPackage;
+      document.getElementById('report-print-container').innerHTML = totalCompiledPackage;
+      document.getElementById('report-onscreen-preview-card').style.display = "block";
+    }
+  </script>
+</body>
+</html>
