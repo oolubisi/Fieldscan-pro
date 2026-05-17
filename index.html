@@ -48,11 +48,11 @@
     }
     .segment-btn {
       flex: 1;
-      padding: 12px 6px;
+      padding: 12px 4px;
       border: none;
       background: transparent;
       font-weight: 800;
-      font-size: 13px;
+      font-size: 11px;
       cursor: pointer;
       border-radius: 10px;
       text-transform: uppercase;
@@ -122,7 +122,6 @@
       cursor: pointer;
     }
 
-    /* SPECIFICATION ATTACHMENT DECK RENDERING AND PREVIEW THUMBNAILS STYLES */
     .icon-upload-label {
       background: var(--card-light);
       border: 2px solid var(--text);
@@ -259,6 +258,7 @@
           <button class="segment-btn active" id="seg-btn-profile" onclick="switchConsoleSegment('profile')">Client</button>
           <button class="segment-btn" id="seg-btn-takeoff" onclick="switchConsoleSegment('takeoff')">Take-Off</button>
           <button class="segment-btn" id="seg-btn-progress" onclick="switchConsoleSegment('progress')">Progress</button>
+          <button class="segment-btn" id="seg-btn-workorders" onclick="switchConsoleSegment('workorders')">Orders</button>
         </div>
 
         <div id="console-seg-profile" class="console-tab-window active-view">
@@ -286,6 +286,14 @@
             <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px; background:var(--success);" onclick="openModal('progress_entry')">+ Update Status</button>
           </div>
           <div id="console-progress-feed" class="timeline-feed"></div>
+        </div>
+
+        <div id="console-seg-workorders" class="console-tab-window page-view">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px;">
+            <h3 style="font-size:16px; font-weight:800; flex:1;">SUBCONTRACTOR WORK ORDERS</h3>
+            <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px; background:var(--primary);" onclick="openModal('workorder')">+ Dispatch</button>
+          </div>
+          <div id="console-workorders-list"></div>
         </div>
       </div>
 
@@ -341,23 +349,7 @@
   </div>
 
   <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzCxTeCxxbVe_j6ZIAoPcQb6jES-KmWKQG7KtyVBRe1e7R6zSWA5zY3FQeafqJdXTTV/exec"; 
-                     
-    async function callApi(action, data = {}) {
-      try {
-        console.log("SENDING API CALL:", action);
-        const response = await fetch(GAS_URL, {
-          method: "POST",
-          body: JSON.stringify({ action: action, data: data }),
-        });
-        return await response.json();
-      } catch (err) {
-        console.error("TRANSMISSION ERROR:", err);
-        return null;
-      }
-    }
-    
-    let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [] };
+    let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [], workorders: [] };
     let currentSelectedProjectId = null;
 
     window.onload = () => { refreshMasterDashboard(); };
@@ -412,6 +404,7 @@
 
       if (segKey === 'takeoff') loadTakeOffListings();
       if (segKey === 'progress') loadProgressTimelineFeed();
+      if (segKey === 'workorders') loadWorkOrdersListings();
     }
 
     function loadTakeOffListings() {
@@ -422,7 +415,7 @@
         cache.takeoffs = items || [];
         const projectItems = (items || []).filter(i => i.projectId === currentSelectedProjectId);
         if(projectItems.length === 0) {
-          container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">Survey framework blank. Appending dimensional metrics generates the Take-Off matrix sheets.</p>`;
+          container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">Survey framework blank.</p>`;
           return;
         }
         container.innerHTML = projectItems.map(i => `
@@ -450,7 +443,7 @@
         cache.progressLogs = logs || [];
         const projectLogs = (logs || []).filter(l => l.projectId === currentSelectedProjectId);
         if(projectLogs.length === 0) {
-          container.innerHTML = `<p style="color:var(--muted); font-style:italic; padding-left:10px; font-size:14px;">No timeline updates logged. Weekly progress reports build client reports automatically.</p>`;
+          container.innerHTML = `<p style="color:var(--muted); font-style:italic; padding-left:10px; font-size:14px;">No timeline updates logged.</p>`;
           return;
         }
         container.innerHTML = projectLogs.map(l => `
@@ -469,14 +462,48 @@
       });
     }
 
+    function loadWorkOrdersListings() {
+      const container = document.getElementById('console-workorders-list');
+      container.innerHTML = `<p style="text-align:center; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Querying order registry...</p>`;
+      
+      // Pull Subcontractor relationships first to resolve corporate entity names cleanly
+      callApi('getVendors', {}).then(vendors => {
+        cache.vendors = vendors || [];
+        callApi('getWorkOrders', {}).then(orders => {
+          cache.workorders = orders || [];
+          const projectOrders = (orders || []).filter(w => w.projectId === currentSelectedProjectId);
+          if(projectOrders.length === 0) {
+            container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">No custom work allocations issued for this jobsite.</p>`;
+            return;
+          }
+          container.innerHTML = projectOrders.map(w => {
+            const subName = cache.vendors.find(v => String(v.vendorId || v.rowId) === String(w.vendorId))?.company || "General Scope Assignee";
+            return `
+              <div class="card" onclick="openWorkOrderModalById('${w.workOrderId}')" style="background:#fff; border-color:#000; cursor:pointer;">
+                <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
+                  <div>
+                    <strong style="font-size:18px;">${subName}</strong><br>
+                    <small style="color:var(--muted); font-weight:700;">Ref: ${w.workOrderId} | Issued: ${w.dateCreated}</small>
+                  </div>
+                  <span style="font-size:11px; font-weight:900; background:${w.status === 'Completed' ? 'var(--success)' : '#fd7e14'}; color:#fff; padding:3px 8px; border-radius:4px; text-transform:uppercase;">${w.status}</span>
+                </div>
+                <p style="font-size:15px; font-weight:600; margin-top:6px; color:#000;">${w.description}</p>
+                <div style="font-size:16px; font-weight:900; margin-top:8px; color:var(--primary);">Tariff Valuation: ₦${Number(w.amount).toLocaleString()}</div>
+              </div>
+            `;
+          }).join('');
+        });
+      });
+    }
+
+    function openWorkOrderModalById(id) {
+      const match = cache.workorders.find(w => w.workOrderId === id);
+      if(match) openModal('workorder', match);
+    }
+
     function triggerEditProjectProfile() {
       const p = cache.projects.find(item => item.projectId === currentSelectedProjectId);
       if(p) openModal('project', p);
-    }
-
-    function openVendorModalById(vendorId) {
-      const match = cache.vendors.find(v => String(v.vendorId || v.rowId) === String(vendorId));
-      if (match) openModal('vendor', match);
     }
 
     function refreshVendorsListView() {
@@ -484,7 +511,7 @@
         cache.vendors = data || [];
         const container = document.getElementById('vendor-master-list');
         container.innerHTML = (data || []).map(v => `
-          <div class="card" onclick="openVendorModalById('${v.vendorId || v.rowId}')" style="cursor:pointer; display:flex; align-items:center; gap:15px;">
+          <div class="card" onclick="openModal('vendor', ${JSON.stringify(v)})" style="cursor:pointer; display:flex; align-items:center; gap:15px;">
             <img src="${getDirectImageUrl(v.passport) || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2240%22 height=%2240%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%23ccc%22/></svg>'}" style="width:55px; height:55px; object-fit:cover; border-radius:50%; border:2px solid #000; flex-shrink:0;">
             <div style="flex:1;">
               <strong style="font-size:20px;">${v.company || 'Unnamed Subcontractor'}</strong><br>
@@ -515,10 +542,8 @@
       if(!filesList || filesList.length === 0) return;
       Array.from(filesList).forEach(file => {
         const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-        
-        // SPECIFICATION COMPLIANCE: SYSTEM ENFORCES AN ABSOLUTE MAX 500KB FOR PDF DOCUMENT UPLOADS
         if (isPdf && file.size > 500 * 1024) {
-          alert(`Boundary Limit Conflict: "${file.name}" exceeds the rigid 500KB threshold configuration for PDF files.`);
+          alert(`Boundary Limit Conflict: "${file.name}" exceeds the 500KB configuration max parameter limit for PDF files.`);
           return;
         }
 
@@ -526,7 +551,6 @@
         reader.onload = async (evt) => {
           let base64StringData = evt.target.result;
           if (!isPdf) {
-            // SPECIFICATION COMPLIANCE: FLUID IMAGE RESAMPLING CRUSHES IMAGES SECURELY BELOW 200KB LIMIT
             base64StringData = await compressImageToTargetLimit(evt.target.result, 190000);
           }
           const generatedName = (isPdf ? "pdf_" : "img_") + Date.now() + "_" + file.name.replace(/[^a-zA-Z0-9.]/g, "_");
@@ -576,8 +600,8 @@
         title.innerText = "Log Quantity Measure";
         let capturedPhotoUrl = "";
         body.innerHTML = `
-          <label ${labelStyle}>Room / Structural Area Site Node</label><input id="t_area" placeholder="e.g. Master Bedroom, Outer Fence" ${largeInput}>
-          <label ${labelStyle}>Operational Trade Classification</label><input id="t_cat" placeholder="e.g. Tiling, Masonry, Painting" ${largeInput}>
+          <label ${labelStyle}>Room / Structural Area Site Node</label><input id="t_area" placeholder="e.g. Master Bedroom" ${largeInput}>
+          <label ${labelStyle}>Operational Trade Classification</label><input id="t_cat" placeholder="e.g. Tiling, Masonry" ${largeInput}>
           <label ${labelStyle}>Specific Engineering Scope Description</label><input id="t_desc" placeholder="e.g. Install high-gloss floor tiles" ${largeInput}>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
             <div><label ${labelStyle}>Quantity Cost Value</label><input id="t_qty" type="number" step="0.01" ${largeInput}></div>
@@ -631,11 +655,9 @@
       else if (type === 'vendor') {
         const uniqueId = isEdit ? (editData.vendorId || editData.rowId) : "VND-" + Math.random().toString(36).substr(2, 5).toUpperCase();
         title.innerText = isEdit ? "Subcontractor Setup Profile" : "Add Vendor Account";
-        
         let avatarPhoto = isEdit ? editData.passport : "";
         let attachmentPhotoQueue = isEdit && editData.attachments ? editData.attachments.split(',').filter(Boolean) : [];
 
-        // SPECIFICATION COMPLIANCE: SHORT COMPACT LABELS AND INTEGRATED FRONT PASSPORT FRAMING ENGINE
         body.innerHTML = `
           <div class="passport-frame-container">
             <img id="passport_frame_view" src="${avatarPhoto ? getDirectImageUrl(avatarPhoto) : 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2250%22 height=%2250%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%236c757d%22/></svg>'}" style="width:100%; height:100%; object-fit:cover;">
@@ -644,25 +666,12 @@
               <input type="file" id="v_pass_uploader" accept="image/*" capture="environment" style="display:none">
             </label>
           </div>
-
-          <label ${labelStyle}>Company</label>
-          <input id="v_comp" value="${isEdit ? (editData.company || '') : ''}" ${largeInput}>
-          
-          <label ${labelStyle}>Trade</label>
-          <input id="v_trade" value="${isEdit ? (editData.trade || '') : ''}" ${largeInput}>
-          
-          <label ${labelStyle}>Contact Person</label>
-          <input id="v_contact" value="${isEdit ? (editData.contactName || '') : ''}" ${largeInput}>
-          
-          <label ${labelStyle}>Phone 1</label>
-          <input id="v_phone1" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${isEdit ? (editData.phone1 || editData.phone || '') : ''}" placeholder="11 Digits Numeric" ${largeInput}>
-          
-          <label ${labelStyle}>Phone 2</label>
-          <input id="v_phone2" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${isEdit ? (editData.phone2 || '') : ''}" placeholder="11 Digits Numeric" ${largeInput}>
-          
-          <label ${labelStyle}>email</label>
-          <input id="v_email" type="email" value="${isEdit ? (editData.email || '') : ''}" ${largeInput}>
-
+          <label ${labelStyle}>Company</label><input id="v_comp" value="${isEdit ? (editData.company || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Trade</label><input id="v_trade" value="${isEdit ? (editData.trade || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Contact Person</label><input id="v_contact" value="${isEdit ? (editData.contactName || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Phone 1</label><input id="v_phone1" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${isEdit ? (editData.phone1 || editData.phone || '') : ''}" placeholder="11 Digits Numeric" ${largeInput}>
+          <label ${labelStyle}>Phone 2</label><input id="v_phone2" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${isEdit ? (editData.phone2 || '') : ''}" placeholder="11 Digits Numeric" ${largeInput}>
+          <label ${labelStyle}>email</label><input id="v_email" type="email" value="${isEdit ? (editData.email || '') : ''}" ${largeInput}>
           <label ${labelStyle}>Attachments</label>
           <div id="vendorAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
           <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="vendor_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
@@ -675,46 +684,56 @@
           const r = new FileReader(); r.onload = async (evt) => {
             const comp = await compressImageToTargetLimit(evt.target.result, 190000);
             callApi('uploadImage', { base64: comp, name: "pass_" + uniqueId + ".jpg" }).then(res => { 
-              if(res && res.url) { 
-                avatarPhoto = res.url; 
-                document.getElementById('passport_frame_view').src = getDirectImageUrl(res.url); 
-              } 
+              if(res && res.url) { avatarPhoto = res.url; document.getElementById('passport_frame_view').src = getDirectImageUrl(res.url); } 
             });
           }; r.readAsDataURL(file);
         };
-
-        document.getElementById('vendor_multi_uploader').onchange = (e) => {
-          processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'vendorAttachmentsPreviews');
-        };
+        document.getElementById('vendor_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'vendorAttachmentsPreviews'); };
 
         submit.onclick = () => {
-          const p1 = document.getElementById('v_phone1').value;
-          const p2 = document.getElementById('v_phone2').value;
-          
-          // SPECIFICATION COMPLIANCE: RIGID LENGTH REGEX VERBAL TRACKS FOR BOTH ROUTE LINES
-          const numericCheck = /^[0-9]{11}$/;
-          if (!numericCheck.test(p1)) { alert("Phone 1 must be exactly 11 numeric digits."); return; }
-          if (!numericCheck.test(p2)) { alert("Phone 2 must be exactly 11 numeric digits."); return; }
-
+          const p1 = document.getElementById('v_phone1').value; const p2 = document.getElementById('v_phone2').value;
+          if (!/^[0-9]{11}$/.test(p1) || !/^[0-9]{11}$/.test(p2)) { alert("Both phone fields must contain exactly 11 numeric digits."); return; }
           submit.disabled = true;
-          
-          // SPECIFICATION COMPLIANCE: EXPLICIT CASTING FORCE ASSURES SAFE STRING EXTRACTION FOR GOOGLE SCHEMAS
-          const payload = { 
-            vendorId: uniqueId, 
-            rowId: uniqueId,
-            company: document.getElementById('v_comp').value, 
-            trade: document.getElementById('v_trade').value, 
-            contactName: document.getElementById('v_contact').value, 
-            phone: String(p1),
-            phone1: String(p1), 
-            phone2: String(p2), 
-            email: document.getElementById('v_email').value,
-            passport: String(avatarPhoto),
-            attachments: String(attachmentPhotoQueue.join(',')),
-            archived: isEdit && editData.archived ? editData.archived : "No"
-          };
-          
+          const payload = { vendorId: uniqueId, company: document.getElementById('v_comp').value, trade: document.getElementById('v_trade').value, contactName: document.getElementById('v_contact').value, phone1: String(p1), phone2: String(p2), email: document.getElementById('v_email').value, passport: String(avatarPhoto), attachments: String(attachmentPhotoQueue.join(',')), archived: "No" };
           callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
+        };
+      }
+      
+      // NEW REGISTRATION FORM INTERFACE: SUBCONTRACTOR WORK ORDERS PIPELINE
+      else if (type === 'workorder') {
+        const uniqueId = isEdit ? editData.workOrderId : "WKO-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = isEdit ? "Update Dispatched Order" : "Generate Work Order";
+        let attachmentPhotoQueue = isEdit && editData.attachments ? editData.attachments.split(',').filter(Boolean) : [];
+
+        body.innerHTML = `
+          <label ${labelStyle}>Select Subcontractor Target</label>
+          <select id="w_vendor" ${largeInput}></select>
+          <label ${labelStyle}>Task Scope & Execution Deliverables</label>
+          <textarea id="w_desc" rows="3" placeholder="Provide complete operational requirements..." ${largeInput}>${isEdit ? editData.description : ''}</textarea>
+          <label ${labelStyle}>Contract Valuation Tariff (₦)</label>
+          <input id="w_amount" type="number" value="${isEdit ? editData.amount : ''}" ${largeInput}>
+          <label ${labelStyle}>Execution Authorization Status</label>
+          <select id="w_status" ${largeInput}>
+            <option value="Pending Clearance" ${isEdit && editData.status === 'Pending Clearance' ? 'selected' : ''}>Pending Clearance</option>
+            <option value="Active Field Run" ${isEdit && editData.status === 'Active Field Run' ? 'selected' : ''}>Active Field Run</option>
+            <option value="Completed" ${isEdit && editData.status === 'Completed' ? 'selected' : ''}>Completed & Verified</option>
+          </select>
+          <label ${labelStyle}>Attachments</label>
+          <div id="woAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="wo_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
+        `;
+
+        const vSel = document.getElementById('w_vendor');
+        vSel.innerHTML = (cache.vendors || []).map(v => `<option value="${v.vendorId || v.rowId}" ${isEdit && String(v.vendorId || v.rowId) === String(editData.vendorId) ? 'selected' : ''}>${v.company} [${v.trade}]</option>`).join('') || '<option value="">-- No Subcontractors Available --</option>';
+
+        if(isEdit && editData.attachments) populateModalInlineImageGalleryPreviews(editData.attachments, 'woAttachmentsPreviews');
+        document.getElementById('wo_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'woAttachmentsPreviews'); };
+
+        submit.onclick = () => {
+          if(!vSel.value) { alert("An active contract handler entity must be assigned."); return; }
+          submit.disabled = true;
+          const payload = { workOrderId: uniqueId, projectId: currentSelectedProjectId, vendorId: vSel.value, description: document.getElementById('w_desc').value, amount: document.getElementById('w_amount').value, status: document.getElementById('w_status').value, attachments: attachmentPhotoQueue.join(',') };
+          callApi(isEdit ? 'updateWorkOrder' : 'saveWorkOrder', payload).then(() => { closeModal(); loadWorkOrdersListings(); });
         };
       }
     }
@@ -734,9 +753,6 @@
 
     function getDirectImageUrl(url) { if (!url || !url.includes('drive.google.com')) return url; const id = url.split('/d/')[1]?.split('/')[0] || url.split('id=')[1]?.split('&')[0]; return `https://drive.google.com/thumbnail?id=${id}&sz=w800`; }
     function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
-    function toSheetDate(dStr) { if (!dStr) return ""; const [y, m, d] = dStr.split('-'); return `${d}/${m}/${y}`; }
-    function fromSheetDate(dStr) { if (!dStr || !dStr.includes('/')) return ""; const [d, m, y] = dStr.split('/'); return `${y}-${m}-${d}`; }
-
     function showPage(p) {
       document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active-view'));
       const target = document.getElementById('view-' + p);
@@ -747,9 +763,9 @@
     }
 
     function initReportsConsoleEngine() {
-      const pipeline = [ callApi('getProjects', {}), callApi('getTakeOffItems', {}), callApi('getProgressLogs', {}) ];
-      Promise.all(pipeline).then(([p, t, l]) => {
-        cache.projects = p || []; cache.takeoffs = t || []; cache.progressLogs = l || [];
+      const pipeline = [ callApi('getProjects', {}), callApi('getTakeOffItems', {}), callApi('getProgressLogs', {}), callApi('getWorkOrders', {}), callApi('getVendors', {}) ];
+      Promise.all(pipeline).then(([p, t, l, w, v]) => {
+        cache.projects = p || []; cache.takeoffs = t || []; cache.progressLogs = l || []; cache.workorders = w || []; cache.vendors = v || [];
         const pSel = document.getElementById('rep-project-sel');
         pSel.innerHTML = '<option value="">-- Choose Field Project Instance --</option>' + cache.projects.map(item => `<option value="${item.projectId}">${item.clientName} [Ref: ${item.projectId}]</option>`).join('');
         document.getElementById('rep-template-sel').innerHTML = "<option value=''>-- Configure Project Reference Filter Options First --</option>";
@@ -766,7 +782,8 @@
         <option value="">-- Choose Target Document Matrix Setup --</option>
         <option value="survey_complete">Comprehensive Quantity Take-Off Sheet Manifest</option>
         <option value="progress_timeline">Chronological Construction Progress Audit Timeline</option>
-        <option value="master_dossier">The Complete Executive Portfolio (Take-Off + Field Logs)</option>
+        <option value="scope_completion">Project Scope & Completion Report Portfolio</option>
+        <option value="master_dossier">The Complete Executive Portfolio (All Records Bundle)</option>
       `;
     }
 
@@ -800,6 +817,7 @@
       let contentHtml = "";
       const filteredTakeoffs = cache.takeoffs.filter(item => item.projectId === pId);
       const filteredProgress = cache.progressLogs.filter(item => item.projectId === pId);
+      const filteredOrders = cache.workorders.filter(item => item.projectId === pId);
 
       if (layout === "survey_complete" || layout === "master_dossier") {
         contentHtml += `
@@ -826,6 +844,59 @@
                 <p style="font-size:13px; font-weight:500; color:#333; margin-top:3px; font-style:italic;">"${l.commentNarrative}"</p>
               </div>
             `).join('') || '<p style="font-style:italic; font-size:13px;">No physical timeline history rows processed yet.</p>'}
+          </div>
+        `;
+      }
+
+      // NEW REPORT OPTION MATRIX: PROJECT SCOPE & COMPLETION DOSSIER REPORT
+      if (layout === "scope_completion") {
+        const latestPercentages = {};
+        filteredProgress.forEach(l => {
+          if (!latestPercentages[l.tradeCategory] || parseInt(l.completionPercentage) > parseInt(latestPercentages[l.tradeCategory])) {
+            latestPercentages[l.tradeCategory] = parseInt(l.completionPercentage);
+          }
+        });
+        
+        const overallTradeCount = Object.keys(latestPercentages).length;
+        const aggregateSum = Object.values(latestPercentages).reduce((a, b) => a + b, 0);
+        const calculatedTotalPct = overallTradeCount > 0 ? Math.round(aggregateSum / overallTradeCount) : 0;
+
+        contentHtml += `
+          <h3 style="font-size:16px; margin-bottom:12px; text-transform:uppercase; border-bottom:1px solid #000; padding-bottom:4px;">Project Scope Fulfillment & Completion Summary</h3>
+          <div style="display:grid; grid-template-columns:1fr 2fr; gap:15px; margin-bottom:20px; align-items:center;">
+            <div style="border:3px solid #000; text-align:center; padding:20px; border-radius:12px; background:#f8f9fa;">
+              <span style="font-size:36px; font-weight:900; color:var(--success);">${calculatedTotalPct}%</span><br>
+              <small style="font-weight:800; font-size:11px; color:var(--muted); text-transform:uppercase;">Overall Project Progress Score</small>
+            </div>
+            <div style="font-size:14px; font-weight:600;">
+              Total Quantified Scope Branches: <span style="font-weight:800; color:var(--primary);">${filteredTakeoffs.length} Survey Elements</span><br>
+              Total Chronological Milestones Logged: <span style="font-weight:800;">${filteredProgress.length} Entries</span><br>
+              Contractual Subcontract Work Orders: <span style="font-weight:800;">${filteredOrders.length} Allocated Packages</span>
+            </div>
+          </div>
+
+          <h4 style="font-size:14px; text-transform:uppercase; margin-bottom:6px;">Section 1: Active Trade Milestones Metrics Status Matrix</h4>
+          <table class="print-table" style="margin-bottom:25px;">
+            <thead><tr><th>Allocated Specialized Trade Sector</th><th>Verified Structural Completion Track Status</th></tr></thead>
+            <tbody>
+              ${Object.keys(latestPercentages).map(t => `<tr><td><strong>${t.toUpperCase()}</strong></td><td><strong>${latestPercentages[t]}% Complete</strong></td></tr>`).join('') || '<tr><td colspan="2">No active trade milestone percentages have been mapped for this project space.</td></tr>'}
+            </tbody>
+          </table>
+
+          <h4 style="font-size:14px; text-transform:uppercase; margin-bottom:6px;">Section 2: Dispatched Subcontractor Expenditure Commitments</h4>
+          <table class="print-table">
+            <thead><tr><th>Assigned Corporate Handler</th><th>Operational Deliverable Task Scope</th><th>Budget Tariff Valuation</th><th>Tracking Status</th></tr></thead>
+            <tbody>
+              ${filteredOrders.map(w => {
+                const name = cache.vendors.find(v => String(v.vendorId || v.rowId) === String(w.vendorId))?.company || "Assigned Contractor Entity";
+                return `<tr><td><strong>${name}</strong></td><td>${w.description}</td><td>₦${Number(w.amount).toLocaleString()}</td><td>[${w.status.toUpperCase()}]</td></tr>`;
+              }).join('') || '<tr><td colspan="4">No subcontractor liabilities or work orders have been mapped for this reference index token.</td></tr>'}
+            </tbody>
+          </table>
+          
+          <div class="page-break" style="margin-top:50px; display:grid; grid-template-columns:1fr 1fr; gap:40px; text-align:center; font-size:12px; font-weight:800;">
+            <div><div style="border-bottom:1px solid #000; margin-bottom:5px; height:35px;"></div>FIELD INSPECTOR AUTHORIZATION</div>
+            <div><div style="border-bottom:1px solid #000; margin-bottom:5px; height:35px;"></div>CLIENT REVIEW / SIGN-OFF CLEARANCE</div>
           </div>
         `;
       }
