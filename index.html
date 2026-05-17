@@ -382,13 +382,13 @@
           return;
         }
         container.innerHTML = data.map(p => `
-          <div class="card" onclick="loadProjectConsoleHub('${p.projectId}')" style="border-left: 5px solid ${p.projectStatus === 'Active' ? 'var(--success)' : 'var(--muted)'}; cursor:pointer;">
+          <div class="card" onclick="loadProjectConsoleHub('${p.projectId}')" style="border-left: 5px solid ${p.projectStatus === 'Active' ? 'var(--success)' : (p.projectStatus === 'Declined' ? 'var(--danger)' : 'var(--muted)')}; cursor:pointer;">
             <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
               <strong style="font-size:20px; color:#000;">${p.clientName}</strong>
               <span style="font-size:12px; font-weight:900; background:#000; color:#fff; padding:3px 8px; border-radius:4px;">${p.projectId}</span>
             </div>
             <div style="font-size:15px; font-weight:600; color:var(--primary);"><i class="fas fa-map-marker-alt"></i> ${p.siteLocation}</div>
-            <div style="font-size:12px; color:var(--muted); font-weight:700; margin-top:8px; border-top:1px dashed #ccc; padding-top:4px;">Operational Track Phase Status: ${p.projectStatus.toUpperCase()}</div>
+            <div style="font-size:12px; color:var(--muted); font-weight:700; margin-top:8px; border-top:1px dashed #ccc; padding-top:4px;">Status: ${p.projectStatus.toUpperCase()}</div>
           </div>
         `).join('');
       });
@@ -402,8 +402,8 @@
       document.getElementById('console-title-text').innerText = p.projectId;
       document.getElementById('c-meta-name').innerText = p.clientName;
       document.getElementById('c-meta-loc').innerText = p.siteLocation;
-      document.getElementById('c-meta-phone').innerText = p.clientPhone;
-      document.getElementById('c-meta-phone').href = "tel:" + p.clientPhone;
+      document.getElementById('c-meta-phone').innerText = p.clientPhone || "None Provided";
+      document.getElementById('c-meta-phone').href = p.clientPhone ? "tel:" + p.clientPhone : "#";
       document.getElementById('c-meta-notes').value = p.notes || "No standard parameters stored.";
 
       switchConsoleSegment('profile');
@@ -618,7 +618,7 @@
           
           <label ${labelStyle}>Client Name</label><input id="p_client" value="${isEdit?editData.clientName:''}" ${largeInput}>
           <label ${labelStyle}>Site Location</label><input id="p_loc" value="${isEdit?editData.siteLocation:''}" ${largeInput}>
-          <label ${labelStyle}>Client Phone</label><input id="p_phone" type="tel" maxlength="11" value="${isEdit?editData.clientPhone:''}" ${largeInput}>
+          <label ${labelStyle}>Client Phone</label><input id="p_phone" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" placeholder="Blank or 11 Digits" value="${isEdit?editData.clientPhone:''}" ${largeInput}>
           <label ${labelStyle}>Client Email</label><input id="p_email" type="email" value="${isEdit?editData.clientEmail:''}" ${largeInput}>
           <label ${labelStyle}>Project Status</label>
           <select id="p_status" ${largeInput}>
@@ -630,8 +630,12 @@
           <label ${labelStyle}>Project Notes</label><textarea id="p_notes" rows="2" ${largeInput}>${isEdit?editData.notes:''}</textarea>
         `;
         submit.onclick = () => {
+          const phoneInput = document.getElementById('p_phone').value.trim();
+          // UPGRADE VALIDATION: BLANK OK, IF SUPPLIED MUST BE 11 NUMERIC DIGITS STRINGS
+          if (phoneInput !== "" && !/^[0-9]{11}$/.test(phoneInput)) { alert("Client phone field must be exactly 11 numeric digits."); return; }
+          
           submit.disabled = true;
-          const payload = { projectId: uniqueId, clientName: document.getElementById('p_client').value, siteLocation: document.getElementById('p_loc').value, clientPhone: String(document.getElementById('p_phone').value), clientEmail: document.getElementById('p_email').value, projectStatus: document.getElementById('p_status').value, notes: document.getElementById('p_notes').value };
+          const payload = { projectId: uniqueId, clientName: document.getElementById('p_client').value, siteLocation: document.getElementById('p_loc').value, clientPhone: String(phoneInput), clientEmail: document.getElementById('p_email').value, projectStatus: document.getElementById('p_status').value, notes: document.getElementById('p_notes').value };
           callApi(isEdit?'updateProject':'saveProject', payload).then(() => { closeModal(); refreshMasterDashboard(); if(isEdit) loadProjectConsoleHub(uniqueId); });
         };
       }
@@ -718,8 +722,8 @@
           <label ${labelStyle}>Company Name</label><input id="v_comp" value="${isEdit ? (editData.company || '') : ''}" ${largeInput}>
           <label ${labelStyle}>Trade Category</label><input id="v_trade" value="${isEdit ? (editData.trade || '') : ''}" ${largeInput}>
           <label ${labelStyle}>Contact Person</label><input id="v_contact" value="${isEdit ? (editData.contactName || '') : ''}" ${largeInput}>
-          <label ${labelStyle}>Phone 1</label><input id="v_phone1" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${isEdit ? (editData.phone1 || editData.phone || '') : ''}" placeholder="11 Digits" ${largeInput}>
-          <label ${labelStyle}>Phone 2</label><input id="v_phone2" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${isEdit ? (editData.phone2 || '') : ''}" placeholder="11 Digits" ${largeInput}>
+          <label ${labelStyle}>Phone 1</label><input id="v_phone1" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" placeholder="Blank or 11 Digits" value="${isEdit ? (editData.phone1 || editData.phone || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Phone 2</label><input id="v_phone2" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" placeholder="Blank or 11 Digits" value="${isEdit ? (editData.phone2 || '') : ''}" ${largeInput}>
           <label ${labelStyle}>Email Address</label><input id="v_email" type="email" value="${isEdit ? (editData.email || '') : ''}" ${largeInput}>
           
           <label ${labelStyle}>Form Attachments</label>
@@ -740,8 +744,13 @@
         document.getElementById('vendor_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'vendorAttachmentsPreviews'); };
 
         submit.onclick = () => {
-          const p1 = document.getElementById('v_phone1').value; const p2 = document.getElementById('v_phone2').value;
-          if (!/^[0-9]{11}$/.test(p1) || !/^[0-9]{11}$/.test(p2)) { alert("Phone entries must be 11 numeric digits."); return; }
+          const p1 = document.getElementById('v_phone1').value.trim(); 
+          const p2 = document.getElementById('v_phone2').value.trim();
+          
+          // UPGRADE VALIDATION: BLANK OK, IF SUPPLIED MUST BE 11 NUMERIC DIGITS STRINGS
+          if (p1 !== "" && !/^[0-9]{11}$/.test(p1)) { alert("Phone 1 must be exactly 11 numeric digits."); return; }
+          if (p2 !== "" && !/^[0-9]{11}$/.test(p2)) { alert("Phone 2 must be exactly 11 numeric digits."); return; }
+          
           submit.disabled = true;
           const payload = { vendorId: uniqueId, company: document.getElementById('v_comp').value, trade: document.getElementById('v_trade').value, contactName: document.getElementById('v_contact').value, phone1: String(p1), phone2: String(p2), email: document.getElementById('v_email').value, passport: String(avatarPhoto), attachments: String(attachmentPhotoQueue.join(',')), archived: "No" };
           callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
@@ -802,7 +811,6 @@
       });
     }
 
-    // Direct Image URL processing wrapper script mapping
     function getDirectImageUrl(url) { if (!url || !url.includes('drive.google.com')) return url; const id = url.split('/d/')[1]?.split('/')[0] || url.split('id=')[1]?.split('&')[0]; return `https://drive.google.com/thumbnail?id=${id}&sz=w800`; }
     function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
     
