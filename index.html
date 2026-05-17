@@ -350,20 +350,21 @@
 
   <script>
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzCxTeCxxbVe_j6ZIAoPcQb6jES-KmWKQG7KtyVBRe1e7R6zSWA5zY3FQeafqJdXTTV/exec"; 
-                   
-  async function callApi(action, data = {}) {
-    try {
-      console.log("SENDING API CALL:", action);
-      const response = await fetch(GAS_URL, {
-        method: "POST",
-        body: JSON.stringify({ action: action, data: data }),
-      });
-      return await response.json();
-    } catch (err) {
-      console.error("TRANSMISSION ERROR:", err);
-      return null;
+                     
+    async function callApi(action, data = {}) {
+      try {
+        console.log("SENDING API CALL:", action);
+        const response = await fetch(GAS_URL, {
+          method: "POST",
+          body: JSON.stringify({ action: action, data: data }),
+        });
+        return await response.json();
+      } catch (err) {
+        console.error("TRANSMISSION ERROR:", err);
+        return null;
+      }
     }
-  }
+    
     let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [], workorders: [] };
     let currentSelectedProjectId = null;
 
@@ -481,7 +482,6 @@
       const container = document.getElementById('console-workorders-list');
       container.innerHTML = `<p style="text-align:center; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Querying order registry...</p>`;
       
-      // Pull Subcontractor relationships first to resolve corporate entity names cleanly
       callApi('getVendors', {}).then(vendors => {
         cache.vendors = vendors || [];
         callApi('getWorkOrders', {}).then(orders => {
@@ -589,7 +589,7 @@
       const labelStyle = 'style="font-size: 16px; color: var(--text); font-weight:800; display: block; margin-top: 10px; margin-bottom: 4px;"';
     
       if (type === 'project') {
-        const uniqueId = isEdit ? editData.projectId : "PRJ-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        const uniqueId = isEdit ? editData.projectId : "";
         title.innerText = isEdit ? "Modify Project Profile" : "Register New Jobsite";
         body.innerHTML = `
           <label ${labelStyle}>Client / Enterprise Name</label><input id="p_client" value="${isEdit?editData.clientName:''}" ${largeInput}>
@@ -617,7 +617,7 @@
         body.innerHTML = `
           <label ${labelStyle}>Room / Structural Area Site Node</label><input id="t_area" placeholder="e.g. Master Bedroom" ${largeInput}>
           <label ${labelStyle}>Operational Trade Classification</label><input id="t_cat" placeholder="e.g. Tiling, Masonry" ${largeInput}>
-          <label ${labelStyle}>Specific Engineering Scope Description</label><input id="t_desc" placeholder="e.g. Install high-gloss floor tiles" ${largeInput}>
+          <label ${labelStyle}>Specific Engineering Scope Description</label><input id="t_desc" placeholder="e.g. Install floor tiles" ${largeInput}>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
             <div><label ${labelStyle}>Quantity Cost Value</label><input id="t_qty" type="number" step="0.01" ${largeInput}></div>
             <div><label ${labelStyle}>Unit Parameter Label</label><select id="t_unit" ${largeInput}><option value="sqm">Square Meters (sqm)</option><option value="cu.m">Cubic Meters (cu.m)</option><option value="meters">Linear Meters (m)</option><option value="pcs">Pieces (pcs)</option></select></div>
@@ -713,10 +713,8 @@
           callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
         };
       }
-      
-      // NEW REGISTRATION FORM INTERFACE: SUBCONTRACTOR WORK ORDERS PIPELINE
       else if (type === 'workorder') {
-        const uniqueId = isEdit ? editData.workOrderId : "WKO-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        const uniqueId = isEdit ? editData.workOrderId : "";
         title.innerText = isEdit ? "Update Dispatched Order" : "Generate Work Order";
         let attachmentPhotoQueue = isEdit && editData.attachments ? editData.attachments.split(',').filter(Boolean) : [];
 
@@ -863,7 +861,6 @@
         `;
       }
 
-      // NEW REPORT OPTION MATRIX: PROJECT SCOPE & COMPLETION DOSSIER REPORT
       if (layout === "scope_completion") {
         const latestPercentages = {};
         filteredProgress.forEach(l => {
@@ -905,7 +902,7 @@
               ${filteredOrders.map(w => {
                 const name = cache.vendors.find(v => String(v.vendorId || v.rowId) === String(w.vendorId))?.company || "Assigned Contractor Entity";
                 return `<tr><td><strong>${name}</strong></td><td>${w.description}</td><td>₦${Number(w.amount).toLocaleString()}</td><td>[${w.status.toUpperCase()}]</td></tr>`;
-              }).join('') || '<tr><td colspan="4">No subcontractor liabilities or work orders have been mapped for this reference index token.</td></tr>'}
+              }).join('') || '<tr><td colspan="4">No subcontractor liabilities have been mapped for this reference index token.</td></tr>'}
             </tbody>
           </table>
           
