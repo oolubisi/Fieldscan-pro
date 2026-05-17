@@ -423,6 +423,12 @@
       if (segKey === 'workorders') loadWorkOrdersListings();
     }
 
+    // UPGRADE INTEGRATION: WIRE CARD LOOP EVENTS TO ENABLE MODAL OPENING
+    function openTakeOffModalById(id) {
+      const match = cache.takeoffs.find(t => t.itemId === id);
+      if (match) openModal('takeoff_item', match);
+    }
+
     function loadTakeOffListings() {
       const container = document.getElementById('console-takeoff-list');
       container.innerHTML = `<p style="text-align:center; padding:15px; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Reading items matrix...</p>`;
@@ -434,8 +440,9 @@
           container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">Survey framework blank.</p>`;
           return;
         }
+        // UPGRADE INTEGRATION: ADDED ONCLICK AND CURSOR POINTER TO SUB-CARDS
         container.innerHTML = projectItems.map(i => `
-          <div class="card" style="background:#fff; border-color:#000;">
+          <div class="card" onclick="openTakeOffModalById('${i.itemId}')" style="background:#fff; border-color:#000; cursor:pointer;">
             <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:6px;">
               <div>
                 <span style="font-size:11px; font-weight:800; background:var(--primary); color:#fff; padding:2px 6px; border-radius:4px; text-transform:uppercase;">${i.tradeCategory}</span>
@@ -610,22 +617,52 @@
           callApi(isEdit?'updateProject':'saveProject', payload).then(() => { closeModal(); refreshMasterDashboard(); if(isEdit) loadProjectConsoleHub(uniqueId); });
         };
       }
+      
+      // UPGRADE INTEGRATION: RECONFIGURED FOR INTERACTIVE EDIT DATA PASSES AND PURGING CONTROLS
       else if (type === 'takeoff_item') {
-        const uniqueId = "JOB-" + Math.random().toString(36).substr(2, 5).toUpperCase();
-        title.innerText = "Log Quantity Measure";
-        let capturedPhotoUrl = "";
+        const uniqueId = isEdit ? editData.itemId : "JOB-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = isEdit ? "Modify Quantity Measure" : "Log Quantity Measure";
+        let capturedPhotoUrl = isEdit ? editData.beforePhotoUrl : "";
+        
         body.innerHTML = `
-          <label ${labelStyle}>Room / Structural Area Site Node</label><input id="t_area" placeholder="e.g. Master Bedroom" ${largeInput}>
-          <label ${labelStyle}>Operational Trade Classification</label><input id="t_cat" placeholder="e.g. Tiling, Masonry" ${largeInput}>
-          <label ${labelStyle}>Specific Engineering Scope Description</label><input id="t_desc" placeholder="e.g. Install floor tiles" ${largeInput}>
+          <label ${labelStyle}>Room / Structural Area Site Node</label>
+          <input id="t_area" placeholder="e.g. Master Bedroom" value="${isEdit ? (editData.roomArea || '') : ''}" ${largeInput}>
+          
+          <label ${labelStyle}>Operational Trade Classification</label>
+          <input id="t_cat" placeholder="e.g. Tiling, Masonry" value="${isEdit ? (editData.tradeCategory || '') : ''}" ${largeInput}>
+          
+          <label ${labelStyle}>Specific Engineering Scope Description</label>
+          <input id="t_desc" placeholder="e.g. Install floor tiles" value="${isEdit ? (editData.description || '') : ''}" ${largeInput}>
+          
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-            <div><label ${labelStyle}>Quantity Cost Value</label><input id="t_qty" type="number" step="0.01" ${largeInput}></div>
-            <div><label ${labelStyle}>Unit Parameter Label</label><select id="t_unit" ${largeInput}><option value="sqm">Square Meters (sqm)</option><option value="cu.m">Cubic Meters (cu.m)</option><option value="meters">Linear Meters (m)</option><option value="pcs">Pieces (pcs)</option></select></div>
+            <div>
+              <label ${labelStyle}>Quantity Cost Value</label>
+              <input id="t_qty" type="number" step="0.01" value="${isEdit ? (editData.quantity || '') : ''}" ${largeInput}>
+            </div>
+            <div>
+              <label ${labelStyle}>Unit Parameter Label</label>
+              <select id="t_unit" ${largeInput}>
+                <option value="sqm" ${isEdit && editData.unit === 'sqm' ? 'selected' : ''}>Square Meters (sqm)</option>
+                <option value="cu.m" ${isEdit && editData.unit === 'cu.m' ? 'selected' : ''}>Cubic Meters (cu.m)</option>
+                <option value="meters" ${isEdit && editData.unit === 'meters' ? 'selected' : ''}>Linear Meters (m)</option>
+                <option value="pcs" ${isEdit && editData.unit === 'pcs' ? 'selected' : ''}>Pieces (pcs)</option>
+              </select>
+            </div>
           </div>
-          <label ${labelStyle}>Field Inspector Remarks</label><textarea id="t_notes" rows="2" ${largeInput}></textarea>
-          <label class="action-btn" style="background:var(--text); color:#fff; display:block; text-align:center; padding:12px; cursor:pointer; margin-top:10px;"><i class="fas fa-camera"></i> Snap Site Measurement Proof<input type="file" id="t_photo" accept="image/*" style="display:none"></label>
-          <div id="t_photo_preview" style="margin-top:10px; font-weight:800; font-size:12px; color:var(--success); text-align:center;"></div>
+          <label ${labelStyle}>Field Inspector Remarks</label>
+          <textarea id="t_notes" rows="2" ${largeInput}>${isEdit ? (editData.scopeNotes || '') : ''}</textarea>
+          
+          <label class="action-btn" style="background:var(--text); color:#fff; display:block; text-align:center; padding:12px; cursor:pointer; margin-top:10px;">
+            <i class="fas fa-camera"></i> Snap Site Measurement Proof
+            <input type="file" id="t_photo" accept="image/*" style="display:none">
+          </label>
+          <div id="t_photo_preview" style="margin-top:10px; font-weight:800; font-size:12px; color:var(--success); text-align:center;">
+            ${isEdit && editData.beforePhotoUrl ? '✅ PROOF IMAGE RECORD ASSOCIATED' : ''}
+          </div>
+          
+          ${isEdit ? `<button class="action-btn" id="t_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Take-Off Record</button>` : ''}
         `;
+
         document.getElementById('t_photo').onchange = (e) => {
           const file = e.target.files[0]; if(!file) return;
           document.getElementById('t_photo_preview').innerText = "COMPRESSING RUN STREAMS...";
@@ -635,10 +672,21 @@
             callApi('uploadImage', { base64: comp, name: "survey_" + uniqueId + ".jpg" }).then(res => { if(res.url){ capturedPhotoUrl = res.url; document.getElementById('t_photo_preview').innerText = "✅ PHYSICAL CAPTURE IMAGE BUFFER SEAMLESSLY TRACED"; } });
           }; r.readAsDataURL(file);
         };
+
+        if(isEdit) {
+          document.getElementById('t_delete_btn').onclick = () => {
+            if(confirm("Are you absolutely sure you want to completely delete this structural take-off record? This cannot be undone.")) {
+              document.getElementById('t_delete_btn').disabled = true;
+              submit.disabled = true;
+              callApi('deleteTakeOffItem', { itemId: uniqueId }).then(() => { closeModal(); loadTakeOffListings(); });
+            }
+          };
+        }
+
         submit.onclick = () => {
           submit.disabled = true;
           const payload = { itemId: uniqueId, projectId: currentSelectedProjectId, roomArea: document.getElementById('t_area').value, tradeCategory: document.getElementById('t_cat').value, description: document.getElementById('t_desc').value, quantity: document.getElementById('t_qty').value, unit: document.getElementById('t_unit').value, beforePhotoUrl: capturedPhotoUrl, scopeNotes: document.getElementById('t_notes').value };
-          callApi('saveTakeOffItem', payload).then(() => { closeModal(); loadTakeOffListings(); });
+          callApi(isEdit ? 'updateTakeOffItem' : 'saveTakeOffItem', payload).then(() => { closeModal(); loadTakeOffListings(); });
         };
       }
       else if (type === 'progress_entry') {
@@ -766,6 +814,7 @@
 
     function getDirectImageUrl(url) { if (!url || !url.includes('drive.google.com')) return url; const id = url.split('/d/')[1]?.split('/')[0] || url.split('id=')[1]?.split('&')[0]; return `https://drive.google.com/thumbnail?id=${id}&sz=w800`; }
     function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+    
     function showPage(p) {
       document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active-view'));
       const target = document.getElementById('view-' + p);
