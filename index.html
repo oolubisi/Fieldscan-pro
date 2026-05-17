@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>FieldScan Pro</title>
-  <link href="https://fonts.googleapis.com/css2 family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -38,7 +38,6 @@
       min-height: 100vh; 
     }
 
-    /* SUB-CONSOLE PROJECTS CONTEXT SEGMENT BAR TABS */
     .segment-bar {
       display: flex;
       background: var(--card);
@@ -123,6 +122,58 @@
       cursor: pointer;
     }
 
+    /* SPECIFICATION ATTACHMENT DECK RENDERING AND PREVIEW THUMBNAILS STYLES */
+    .icon-upload-label {
+      background: var(--card-light);
+      border: 2px solid var(--text);
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--text);
+      margin: 12px auto;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    }
+    .icon-upload-label:active { background: var(--border); }
+
+    .modal-preview-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: center;
+      margin-top: 8px;
+      background: var(--card);
+      padding: 8px;
+      border-radius: 12px;
+      border: 2px dashed var(--border);
+    }
+    .modal-preview-thumb {
+      width: 60px;
+      height: 60px;
+      object-fit: cover;
+      border: 2px solid var(--text);
+      border-radius: 6px;
+    }
+
+    .passport-frame-container {
+      position: relative; 
+      width: 115px; 
+      height: 115px; 
+      margin: 0 auto 14px auto; 
+      border: 3px solid var(--text); 
+      border-radius: 50%; 
+      background: #ffffff; 
+      overflow: hidden; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+    }
+
     .modal-overlay { 
       position: fixed; 
       inset: 0; 
@@ -147,7 +198,6 @@
     .page-view { display: none; }
     .active-view { display: block; }
 
-    /* TIMELINE DISPATCH FEED DESIGN */
     .timeline-feed { position: relative; padding-left: 20px; border-left: 3px solid #000; margin-top: 15px; margin-left: 10px;}
     .timeline-node { position: relative; margin-bottom: 25px; }
     .timeline-node::before {
@@ -183,11 +233,11 @@
         </div>
         
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:20px;">
-          <div class="card" style="margin:0; text-align:center; background:var(--card); border-color:#000;" onclick="showPage('vendors')">
+          <div class="card" style="margin:0; text-align:center; background:var(--card); border-color:#000; cursor:pointer;" onclick="showPage('vendors')">
             <div id="badge-vendors" style="font-size:28px; font-weight:900;">--</div>
             <small style="font-weight:800; text-transform:uppercase; font-size:11px;">Subcontractors</small>
           </div>
-          <div class="card" style="margin:0; text-align:center; background:var(--card); border-color:#000;" onclick="showPage('reports')">
+          <div class="card" style="margin:0; text-align:center; background:var(--card); border-color:#000; cursor:pointer;" onclick="showPage('reports')">
             <div style="font-size:28px;"><i class="fas fa-print"></i></div>
             <small style="font-weight:800; text-transform:uppercase; font-size:11px;">Reports Engine</small>
           </div>
@@ -223,7 +273,7 @@
         </div>
 
         <div id="console-seg-takeoff" class="console-tab-window page-view">
-          <div style="display:flex; justify-content:between; align-items:center; margin-bottom:15px; gap:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px;">
             <h3 style="font-size:16px; font-weight:800; flex:1;">DIMENSIONAL SURVEY ITEMS</h3>
             <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px;" onclick="openModal('takeoff_item')">+ Log Item</button>
           </div>
@@ -231,7 +281,7 @@
         </div>
 
         <div id="console-seg-progress" class="console-tab-window page-view">
-          <div style="display:flex; justify-content:between; align-items:center; margin-bottom:15px; gap:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px;">
             <h3 style="font-size:16px; font-weight:800; flex:1;">TIMELINE LOG FEED</h3>
             <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px; background:var(--success);" onclick="openModal('progress_entry')">+ Update Status</button>
           </div>
@@ -245,7 +295,7 @@
             <button class="home-btn" onclick="showPage('dashboard')"><i class="fas fa-home"></i></button>
             <h2>Subcontractors</h2>
           </div>
-          <button class="action-btn" style="width:auto; padding:10px 16px;" onclick="openModal('vendor')">+ Vendor</button>
+          <button class="action-btn" style="width:auto; padding:10px 22px; font-size: 22px;" onclick="openModal('vendor')">+</button>
         </div>
         <div id="vendor-master-list"></div>
       </div>
@@ -291,10 +341,6 @@
   </div>
 
   <script>
-    // ==========================================
-    // BACKEND SCRIPT CONNECTION DISPATCH 
-    // Paste your Google sheet deployment URL string between quotes below:
-    // ==========================================
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzCxTeCxxbVe_j6ZIAoPcQb6jES-KmWKQG7KtyVBRe1e7R6zSWA5zY3FQeafqJdXTTV/exec"; 
                      
     async function callApi(action, data = {}) {
@@ -318,7 +364,7 @@
 
     function refreshMasterDashboard() {
       callApi('getStats', {}).then(stats => {
-        if(stats) document.getElementById('badge-vendors').innerText = stats.activeVendors;
+        if(stats) document.getElementById('badge-vendors').innerText = stats.activeVendors || '0';
       });
       callApi('getProjects', {}).then(data => {
         cache.projects = data || [];
@@ -357,8 +403,7 @@
     }
 
     function switchConsoleSegment(segKey) {
-      document.querySelectorAll('.console-tab-window').forEach(w => w.classList.remove('active-view'));
-      document.querySelectorAll('.console-tab-window').forEach(w => w.classList.add('page-view'));
+      document.querySelectorAll('.console-tab-window').forEach(w => { w.classList.remove('active-view'); w.classList.add('page-view'); });
       document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
 
       document.getElementById('console-seg-' + segKey).classList.remove('page-view');
@@ -429,27 +474,78 @@
       if(p) openModal('project', p);
     }
 
+    function openVendorModalById(vendorId) {
+      const match = cache.vendors.find(v => String(v.vendorId || v.rowId) === String(vendorId));
+      if (match) openModal('vendor', match);
+    }
+
     function refreshVendorsListView() {
       callApi('getVendors', {}).then(data => {
         cache.vendors = data || [];
         const container = document.getElementById('vendor-master-list');
         container.innerHTML = (data || []).map(v => `
-          <div class="card" onclick="openModal('vendor', ${JSON.stringify(v)})">
-            <strong style="font-size:20px;">${v.company}</strong><br>
-            <span style="font-weight:800; color:var(--success); font-size:14px; text-transform:uppercase;">${v.trade}</span><br>
-            <span style="font-size:13px; font-weight:700; color:var(--muted);"><i class="fas fa-user"></i> Rep: ${v.contactName} | <i class="fas fa-phone"></i> ${v.phone}</span>
+          <div class="card" onclick="openVendorModalById('${v.vendorId || v.rowId}')" style="cursor:pointer; display:flex; align-items:center; gap:15px;">
+            <img src="${getDirectImageUrl(v.passport) || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2240%22 height=%2240%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%23ccc%22/></svg>'}" style="width:55px; height:55px; object-fit:cover; border-radius:50%; border:2px solid #000; flex-shrink:0;">
+            <div style="flex:1;">
+              <strong style="font-size:20px;">${v.company || 'Unnamed Subcontractor'}</strong><br>
+              <span style="font-weight:800; color:var(--success); font-size:14px; text-transform:uppercase;">${v.trade || ''}</span><br>
+              <span style="font-size:13px; font-weight:700; color:var(--muted);"><i class="fas fa-user"></i> Rep: ${v.contactName || ''}</span><br>
+              <span style="font-size:13px; font-weight:700; color:var(--muted);"><i class="fas fa-phone"></i> P1: ${v.phone1 || v.phone || ''} | P2: ${v.phone2 || ''}</span>
+            </div>
           </div>
         `).join('');
       });
     }
 
+    function populateModalInlineImageGalleryPreviews(csvUrls, renderBoxId) {
+      const box = document.getElementById(renderBoxId); if(!box) return;
+      const parsedArray = csvUrls ? csvUrls.split(',').filter(Boolean) : [];
+      if(parsedArray.length === 0) { box.innerHTML = ''; box.style.display = 'none'; return; }
+      box.style.display = 'flex';
+      box.innerHTML = parsedArray.map(url => {
+        const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('pdf_');
+        if (isPdf) {
+          return `<div style="width:55px; height:55px; border:2px solid var(--text); border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center;"><i class="fas fa-file-pdf" style="font-size:24px; color:var(--danger);"></i></div>`;
+        }
+        return `<img src="${getDirectImageUrl(url)}" class="modal-preview-thumb">`;
+      }).join('');
+    }
+
+    function processIncomingMultiAttachments(filesList, trackingQueue, previewTargetId) {
+      if(!filesList || filesList.length === 0) return;
+      Array.from(filesList).forEach(file => {
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        
+        // SPECIFICATION COMPLIANCE: SYSTEM ENFORCES AN ABSOLUTE MAX 500KB FOR PDF DOCUMENT UPLOADS
+        if (isPdf && file.size > 500 * 1024) {
+          alert(`Boundary Limit Conflict: "${file.name}" exceeds the rigid 500KB threshold configuration for PDF files.`);
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          let base64StringData = evt.target.result;
+          if (!isPdf) {
+            // SPECIFICATION COMPLIANCE: FLUID IMAGE RESAMPLING CRUSHES IMAGES SECURELY BELOW 200KB LIMIT
+            base64StringData = await compressImageToTargetLimit(evt.target.result, 190000);
+          }
+          const generatedName = (isPdf ? "pdf_" : "img_") + Date.now() + "_" + file.name.replace(/[^a-zA-Z0-9.]/g, "_");
+          callApi('uploadImage', { base64: base64StringData, name: generatedName }).then(res => {
+            if(res && res.url) {
+              trackingQueue.push(res.url);
+              populateModalInlineImageGalleryPreviews(trackingQueue.join(','), previewTargetId);
+            }
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
     function openModal(type, editData = null) {
-      const body = document.getElementById('modalBody');
-      const submit = document.getElementById('modalSubmit');
-      const title = document.getElementById('modalTitle');
-      const overlay = document.getElementById('modalOverlay');
-    
+      const body = document.getElementById('modalBody'); const submit = document.getElementById('modalSubmit');
+      const title = document.getElementById('modalTitle'); const overlay = document.getElementById('modalOverlay');
       const isEdit = !!editData; overlay.style.display = 'flex'; body.innerHTML = ''; submit.disabled = false;
+      
       const largeInput = 'style="font-size: 20px; padding: 12px; margin-bottom: 5px;"';
       const labelStyle = 'style="font-size: 16px; color: var(--text); font-weight:800; display: block; margin-top: 10px; margin-bottom: 4px;"';
     
@@ -471,7 +567,7 @@
         `;
         submit.onclick = () => {
           submit.disabled = true;
-          const payload = { projectId: uniqueId, clientName: document.getElementById('p_client').value, siteLocation: document.getElementById('p_loc').value, clientPhone: document.getElementById('p_phone').value, clientEmail: document.getElementById('p_email').value, projectStatus: document.getElementById('p_status').value, notes: document.getElementById('p_notes').value };
+          const payload = { projectId: uniqueId, clientName: document.getElementById('p_client').value, siteLocation: document.getElementById('p_loc').value, clientPhone: String(document.getElementById('p_phone').value), clientEmail: document.getElementById('p_email').value, projectStatus: document.getElementById('p_status').value, notes: document.getElementById('p_notes').value };
           callApi(isEdit?'updateProject':'saveProject', payload).then(() => { closeModal(); refreshMasterDashboard(); if(isEdit) loadProjectConsoleHub(uniqueId); });
         };
       }
@@ -495,7 +591,7 @@
           const file = e.target.files[0]; if(!file) return;
           document.getElementById('t_photo_preview').innerText = "COMPRESSING RUN STREAMS...";
           const r = new FileReader(); r.onload = async (evt) => {
-            const comp = await compressImage(evt.target.result);
+            const comp = await compressImageToTargetLimit(evt.target.result, 190000);
             document.getElementById('t_photo_preview').innerText = "DISPATCHING IMAGE BLOB TO CLOUD DRIVES...";
             callApi('uploadImage', { base64: comp, name: "survey_" + uniqueId + ".jpg" }).then(res => { if(res.url){ capturedPhotoUrl = res.url; document.getElementById('t_photo_preview').innerText = "✅ PHYSICAL CAPTURE IMAGE BUFFER SEAMLESSLY TRACED"; } });
           }; r.readAsDataURL(file);
@@ -521,7 +617,7 @@
           const file = e.target.files[0]; if(!file) return;
           document.getElementById('l_photo_preview').innerText = "REDUCING PHOTO BYTE DENSITY MATRIX...";
           const r = new FileReader(); r.onload = async (evt) => {
-            const comp = await compressImage(evt.target.result);
+            const comp = await compressImageToTargetLimit(evt.target.result, 190000);
             document.getElementById('l_photo_preview').innerText = "STREAMING BINARY BYTES INTO DRIVE INFRASTRUCTURE...";
             callApi('uploadImage', { base64: comp, name: "progress_" + uniqueId + ".jpg" }).then(res => { if(res.url){ capturedPhotoUrl = res.url; document.getElementById('l_photo_preview').innerText = "✅ TIMELINE METRIC PICTURE DATA STREAM HOISTED SECURELY"; } });
           }; r.readAsDataURL(file);
@@ -533,31 +629,104 @@
         };
       }
       else if (type === 'vendor') {
-        const uniqueId = isEdit ? editData.vendorId : "VND-" + Math.random().toString(36).substr(2, 5).toUpperCase();
-        title.innerText = isEdit ? "Subcontractor SLA Ledger Row" : "Add Vendor Account";
+        const uniqueId = isEdit ? (editData.vendorId || editData.rowId) : "VND-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = isEdit ? "Subcontractor Setup Profile" : "Add Vendor Account";
+        
+        let avatarPhoto = isEdit ? editData.passport : "";
+        let attachmentPhotoQueue = isEdit && editData.attachments ? editData.attachments.split(',').filter(Boolean) : [];
+
+        // SPECIFICATION COMPLIANCE: SHORT COMPACT LABELS AND INTEGRATED FRONT PASSPORT FRAMING ENGINE
         body.innerHTML = `
-          <label ${labelStyle}>Corporate Contracting Company Entity Name</label><input id="v_comp" value="${isEdit?editData.company:''}" ${largeInput}>
-          <label ${labelStyle}>Operational Core Trade Scope</label><input id="v_trade" value="${isEdit?editData.trade:''}" ${largeInput}>
-          <label ${labelStyle}>Account Executive Officer Point Person</label><input id="v_name" value="${isEdit?editData.contactName:''}" ${largeInput}>
-          <label ${labelStyle}>Corporate Mobile Line Channels</label><input id="v_phone" value="${isEdit?editData.phone:''}" ${largeInput}>
-          <label ${labelStyle}>Enterprise Correspondence Network Email</label><input id="v_email" value="${isEdit?editData.email:''}" ${largeInput}>
+          <div class="passport-frame-container">
+            <img id="passport_frame_view" src="${avatarPhoto ? getDirectImageUrl(avatarPhoto) : 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2250%22 height=%2250%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%236c757d%22/></svg>'}" style="width:100%; height:100%; object-fit:cover;">
+            <label style="position:absolute; bottom:2px; right:2px; background:var(--primary); color:#fff; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; cursor:pointer;">
+              <i class="fas fa-camera" style="font-size:12px;"></i>
+              <input type="file" id="v_pass_uploader" accept="image/*" capture="environment" style="display:none">
+            </label>
+          </div>
+
+          <label ${labelStyle}>Company</label>
+          <input id="v_comp" value="${isEdit ? (editData.company || '') : ''}" ${largeInput}>
+          
+          <label ${labelStyle}>Trade</label>
+          <input id="v_trade" value="${isEdit ? (editData.trade || '') : ''}" ${largeInput}>
+          
+          <label ${labelStyle}>Contact Person</label>
+          <input id="v_contact" value="${isEdit ? (editData.contactName || '') : ''}" ${largeInput}>
+          
+          <label ${labelStyle}>Phone 1</label>
+          <input id="v_phone1" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${isEdit ? (editData.phone1 || editData.phone || '') : ''}" placeholder="11 Digits Numeric" ${largeInput}>
+          
+          <label ${labelStyle}>Phone 2</label>
+          <input id="v_phone2" type="tel" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${isEdit ? (editData.phone2 || '') : ''}" placeholder="11 Digits Numeric" ${largeInput}>
+          
+          <label ${labelStyle}>email</label>
+          <input id="v_email" type="email" value="${isEdit ? (editData.email || '') : ''}" ${largeInput}>
+
+          <label ${labelStyle}>Attachments</label>
+          <div id="vendorAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="vendor_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
         `;
+
+        if(isEdit && editData.attachments) populateModalInlineImageGalleryPreviews(editData.attachments, 'vendorAttachmentsPreviews');
+
+        document.getElementById('v_pass_uploader').onchange = (e) => {
+          const file = e.target.files[0]; if(!file) return;
+          const r = new FileReader(); r.onload = async (evt) => {
+            const comp = await compressImageToTargetLimit(evt.target.result, 190000);
+            callApi('uploadImage', { base64: comp, name: "pass_" + uniqueId + ".jpg" }).then(res => { 
+              if(res && res.url) { 
+                avatarPhoto = res.url; 
+                document.getElementById('passport_frame_view').src = getDirectImageUrl(res.url); 
+              } 
+            });
+          }; r.readAsDataURL(file);
+        };
+
+        document.getElementById('vendor_multi_uploader').onchange = (e) => {
+          processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'vendorAttachmentsPreviews');
+        };
+
         submit.onclick = () => {
+          const p1 = document.getElementById('v_phone1').value;
+          const p2 = document.getElementById('v_phone2').value;
+          
+          // SPECIFICATION COMPLIANCE: RIGID LENGTH REGEX VERBAL TRACKS FOR BOTH ROUTE LINES
+          const numericCheck = /^[0-9]{11}$/;
+          if (!numericCheck.test(p1)) { alert("Phone 1 must be exactly 11 numeric digits."); return; }
+          if (!numericCheck.test(p2)) { alert("Phone 2 must be exactly 11 numeric digits."); return; }
+
           submit.disabled = true;
-          const payload = { vendorId: uniqueId, company: document.getElementById('v_comp').value, trade: document.getElementById('v_trade').value, contactName: document.getElementById('v_name').value, phone: document.getElementById('v_phone').value, email: document.getElementById('v_email').value };
-          callApi(isEdit?'updateVendor':'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
+          
+          // SPECIFICATION COMPLIANCE: EXPLICIT CASTING FORCE ASSURES SAFE STRING EXTRACTION FOR GOOGLE SCHEMAS
+          const payload = { 
+            vendorId: uniqueId, 
+            rowId: uniqueId,
+            company: document.getElementById('v_comp').value, 
+            trade: document.getElementById('v_trade').value, 
+            contactName: document.getElementById('v_contact').value, 
+            phone: String(p1),
+            phone1: String(p1), 
+            phone2: String(p2), 
+            email: document.getElementById('v_email').value,
+            passport: String(avatarPhoto),
+            attachments: String(attachmentPhotoQueue.join(',')),
+            archived: isEdit && editData.archived ? editData.archived : "No"
+          };
+          
+          callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
         };
       }
     }
 
-    function compressImage(base64Str) {
+    function compressImageToTargetLimit(base64Str, targetMaxBytes) {
       return new Promise((resolve) => {
         const img = new Image(); img.src = base64Str; img.onload = () => {
           const canvas = document.createElement('canvas'); let w = img.width; let h = img.height;
           if (w > h) { if (w > 1000) { h *= 1000 / w; w = 1000; } } else { if (h > 1000) { w *= 1000 / h; h = 1000; } }
           canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
           let q = 0.8; let res = canvas.toDataURL('image/jpeg', q);
-          while (res.length > 266000 && q > 0.15) { q -= 0.1; res = canvas.toDataURL('image/jpeg', q); }
+          while (res.length > targetMaxBytes && q > 0.15) { q -= 0.1; res = canvas.toDataURL('image/jpeg', q); }
           resolve(res);
         };
       });
@@ -576,9 +745,6 @@
       if (p === 'vendors') refreshVendorsListView();
       if (p === 'reports') initReportsConsoleEngine();
     }
-
-    function toggleMoreMenu(e) { e.stopPropagation(); document.getElementById('moreMenu').classList.toggle('show'); }
-    document.addEventListener('click', () => { const m = document.getElementById('moreMenu'); if(m) m.classList.remove('show'); });
 
     function initReportsConsoleEngine() {
       const pipeline = [ callApi('getProjects', {}), callApi('getTakeOffItems', {}), callApi('getProgressLogs', {}) ];
@@ -610,11 +776,6 @@
       if (!pId || !layout) { alert("Please allocate accurate selection profile configurations."); return; }
       
       const projectItem = cache.projects.find(item => item.projectId === pId);
-      
-      // ==========================================
-      // CORPORATE REPORT GRAPHIC HEADER ENGINE
-      // Configure your business asset token image url cleanly below
-      // ==========================================
       const logoUrl = "YOUR_LOGO_URL_HERE"; 
 
       let headerStr = `
