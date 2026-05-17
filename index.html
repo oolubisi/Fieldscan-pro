@@ -349,6 +349,21 @@
   </div>
 
   <script>
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzCxTeCxxbVe_j6ZIAoPcQb6jES-KmWKQG7KtyVBRe1e7R6zSWA5zY3FQeafqJdXTTV/exec"; 
+                   
+  async function callApi(action, data = {}) {
+    try {
+      console.log("SENDING API CALL:", action);
+      const response = await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: action, data: data }),
+      });
+      return await response.json();
+    } catch (err) {
+      console.error("TRANSMISSION ERROR:", err);
+      return null;
+    }
+  }
     let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [], workorders: [] };
     let currentSelectedProjectId = null;
 
