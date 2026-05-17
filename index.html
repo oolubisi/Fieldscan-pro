@@ -526,7 +526,6 @@
       if(p) openModal('project', p);
     }
 
-    // REPAIRED FIX: CACHE STRING MATCH LOOKUP ROUTER ENGINE
     function openVendorModalById(id) {
       const match = cache.vendors.find(v => String(v.vendorId || v.rowId).trim() === String(id).trim());
       if (match) openModal('vendor', match);
@@ -536,7 +535,6 @@
       callApi('getVendors', {}).then(data => {
         cache.vendors = data || [];
         const container = document.getElementById('vendor-master-list');
-        // REPAIRED FIX: CHANGED TO DYNAMIC openVendorModalById STRING INTERPOLATION PASSTHROUGHS
         container.innerHTML = (data || []).map(v => `
           <div class="card" onclick="openVendorModalById('${v.vendorId || v.rowId}')" style="cursor:pointer; display:flex; align-items:center; gap:15px;">
             <img src="${getDirectImageUrl(v.passport) || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2240%22 height=%2240%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%23ccc%22/></svg>'}" style="width:55px; height:55px; object-fit:cover; border-radius:50%; border:2px solid #000; flex-shrink:0;">
@@ -669,7 +667,7 @@
           
           <label ${labelStyle}>Form Attachments</label>
           <div id="takeoffAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-          <label class="icon-upload-label"><i class="fas fa-camera"></i><input type="file" id="t_photo" accept="image/*,application/pdf" style="display:none"></label>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="t_photo" accept="image/*,application/pdf" style="display:none"></label>
           
           ${isEdit ? `<button class="action-btn" id="t_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Record</button>` : ''}
         `;
@@ -701,7 +699,7 @@
           
           <label ${labelStyle}>Form Attachments</label>
           <div id="progressAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-          <label class="icon-upload-label"><i class="fas fa-camera"></i><input type="file" id="l_photo" accept="image/*,application/pdf" style="display:none"></label>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="l_photo" accept="image/*,application/pdf" style="display:none"></label>
         `;
         document.getElementById('l_photo').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'progressAttachmentsPreviews'); };
         
@@ -734,7 +732,7 @@
           
           <label ${labelStyle}>Form Attachments</label>
           <div id="vendorAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-          <label class="icon-upload-label"><i class="fas fa-camera"></i><input type="file" id="vendor_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="vendor_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
           
           ${isEdit ? `<button class="action-btn" id="v_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Vendor</button>` : ''}
         `;
@@ -796,7 +794,7 @@
           
           <label ${labelStyle}>Form Attachments</label>
           <div id="woAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-          <label class="icon-upload-label"><i class="fas fa-camera"></i><input type="file" id="wo_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="wo_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
         `;
 
         const vSel = document.getElementById('w_vendor');
