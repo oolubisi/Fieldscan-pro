@@ -142,11 +142,11 @@
     .modal-preview-grid {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 12px;
       justify-content: center;
       margin-top: 8px;
       background: var(--card);
-      padding: 8px;
+      padding: 12px;
       border-radius: 12px;
       border: 2px dashed var(--border);
     }
@@ -367,6 +367,10 @@
     
     let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [], workorders: [] };
     let currentSelectedProjectId = null;
+    
+    // ASSET EDIT STATE MANAGERS
+    let currentModalFiles = [];
+    let currentAvatarPhoto = "";
 
     window.onload = () => { refreshMasterDashboard(); };
 
@@ -549,21 +553,38 @@
       });
     }
 
-    function populateModalInlineImageGalleryPreviews(csvUrls, renderBoxId) {
+    // REFRACTORED INLINE REMOVAL PREVIEW PANEL ENGINE
+    function populateModalInlineImageGalleryPreviews(renderBoxId) {
       const box = document.getElementById(renderBoxId); if(!box) return;
-      const parsedArray = csvUrls ? csvUrls.split(',').filter(Boolean) : [];
-      if(parsedArray.length === 0) { box.innerHTML = ''; box.style.display = 'none'; return; }
+      if(currentModalFiles.length === 0) { box.innerHTML = ''; box.style.display = 'none'; return; }
       box.style.display = 'flex';
-      box.innerHTML = parsedArray.map(url => {
+      box.innerHTML = currentModalFiles.map((url, idx) => {
         const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('pdf_');
-        if (isPdf) {
-          return `<div style="width:55px; height:55px; border:2px solid var(--text); border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center;"><i class="fas fa-file-pdf" style="font-size:24px; color:var(--danger);"></i></div>`;
-        }
-        return `<img src="${getDirectImageUrl(url)}" class="modal-preview-thumb">`;
+        let content = isPdf 
+          ? `<div style="width:100%; height:100%; border:2px solid var(--text); border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center;"><i class="fas fa-file-pdf" style="font-size:24px; color:var(--danger);"></i></div>`
+          : `<img src="${getDirectImageUrl(url)}" style="width:100%; height:100%; object-fit:cover; border:2px solid var(--text); border-radius:6px; margin:0;">`;
+        
+        return `
+          <div style="position: relative; width: 60px; height: 60px; flex-shrink: 0;">
+            ${content}
+            <div onclick="removeAttachmentByIndex(${idx}, '${renderBoxId}')" style="position: absolute; top: -6px; right: -6px; background: var(--danger); color: white; border: 2px solid white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3); z-index: 10;">&times;</div>
+          </div>
+        `;
       }).join('');
     }
 
-    function processIncomingMultiAttachments(filesList, trackingQueue, previewTargetId) {
+    function removeAttachmentByIndex(index, renderBoxId) {
+      currentModalFiles.splice(index, 1);
+      populateModalInlineImageGalleryPreviews(renderBoxId);
+    }
+
+    function clearVendorAvatarPhoto() {
+      currentAvatarPhoto = "";
+      document.getElementById('passport_frame_view').src = 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2250%22 height=%2250%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%236c757d%22/></svg>';
+      document.getElementById('v_pass_remove_btn').style.display = 'none';
+    }
+
+    function processIncomingMultiAttachments(filesList, previewTargetId) {
       if(!filesList || filesList.length === 0) return;
       Array.from(filesList).forEach(file => {
         const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
@@ -580,8 +601,8 @@
           const generatedName = (isPdf ? "pdf_" : "img_") + Date.now() + "_" + file.name.replace(/[^a-zA-Z0-9.]/g, "_");
           callApi('uploadImage', { base64: base64StringData, name: generatedName }).then(res => {
             if(res && res.url) {
-              trackingQueue.push(res.url);
-              populateModalInlineImageGalleryPreviews(trackingQueue.join(','), previewTargetId);
+              currentModalFiles.push(res.url);
+              populateModalInlineImageGalleryPreviews(previewTargetId);
             }
           });
         };
@@ -613,6 +634,10 @@
       
       const largeInput = 'style="font-size: 20px; padding: 12px; margin-bottom: 5px;"';
       const labelStyle = 'style="font-size: 16px; color: var(--text); font-weight:800; display: block; margin-top: 10px; margin-bottom: 4px;"';
+      
+      // RESET GLOBAL TRACKERS FOR CURRENT CONTEXTS
+      currentModalFiles = [];
+      currentAvatarPhoto = "";
     
       if (type === 'project') {
         const uniqueId = isEdit ? editData.projectId : generateFrontendPreviewId('project');
@@ -646,7 +671,8 @@
       else if (type === 'takeoff_item') {
         const uniqueId = isEdit ? editData.itemId : "JOB-" + Math.random().toString(36).substr(2, 5).toUpperCase();
         title.innerText = isEdit ? "Modify Take-Off" : "Log Measure";
-        let attachmentPhotoQueue = isEdit && editData.beforePhotoUrl ? editData.beforePhotoUrl.split(',').filter(Boolean) : [];
+        if (isEdit && editData.beforePhotoUrl) currentModalFiles = editData.beforePhotoUrl.split(',').filter(Boolean);
+        
         body.innerHTML = `
           <label ${labelStyle}>Room Area</label><input id="t_area" placeholder="e.g. Kitchen" value="${isEdit ? (editData.roomArea || '') : ''}" ${largeInput}>
           <label ${labelStyle}>Trade Category</label><input id="t_cat" placeholder="e.g. Tiling" value="${isEdit ? (editData.tradeCategory || '') : ''}" ${largeInput}>
@@ -671,8 +697,8 @@
           
           ${isEdit ? `<button class="action-btn" id="t_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Record</button>` : ''}
         `;
-        if(isEdit && editData.beforePhotoUrl) populateModalInlineImageGalleryPreviews(editData.beforePhotoUrl, 'takeoffAttachmentsPreviews');
-        document.getElementById('t_photo').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'takeoffAttachmentsPreviews'); };
+        if(currentModalFiles.length > 0) populateModalInlineImageGalleryPreviews('takeoffAttachmentsPreviews');
+        document.getElementById('t_photo').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'takeoffAttachmentsPreviews'); };
         
         if(isEdit) {
           document.getElementById('t_delete_btn').onclick = () => {
@@ -684,14 +710,13 @@
         }
         submit.onclick = () => {
           submit.disabled = true;
-          const payload = { itemId: uniqueId, projectId: currentSelectedProjectId, roomArea: document.getElementById('t_area').value, tradeCategory: document.getElementById('t_cat').value, description: document.getElementById('t_desc').value, quantity: document.getElementById('t_qty').value, unit: document.getElementById('t_unit').value, beforePhotoUrl: attachmentPhotoQueue.join(','), scopeNotes: document.getElementById('t_notes').value };
+          const payload = { itemId: uniqueId, projectId: currentSelectedProjectId, roomArea: document.getElementById('t_area').value, tradeCategory: document.getElementById('t_cat').value, description: document.getElementById('t_desc').value, quantity: document.getElementById('t_qty').value, unit: document.getElementById('t_unit').value, beforePhotoUrl: currentModalFiles.join(','), scopeNotes: document.getElementById('t_notes').value };
           callApi(isEdit ? 'updateTakeOffItem' : 'saveTakeOffItem', payload).then(() => { closeModal(); loadTakeOffListings(); });
         };
       }
       else if (type === 'progress_entry') {
         const uniqueId = "LOG-" + Math.random().toString(36).substr(2, 5).toUpperCase();
         title.innerText = "Log Progress";
-        let attachmentPhotoQueue = [];
         body.innerHTML = `
           <label ${labelStyle}>Trade Sector</label><input id="l_cat" placeholder="e.g. Painting" ${largeInput}>
           <label ${labelStyle}>Completion Progress</label><select id="l_pct" ${largeInput}><option value="10">10%</option><option value="35">35%</option><option value="75">75%</option><option value="100">100%</option></select>
@@ -701,27 +726,28 @@
           <div id="progressAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
           <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="l_photo" accept="image/*,application/pdf" style="display:none"></label>
         `;
-        document.getElementById('l_photo').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'progressAttachmentsPreviews'); };
+        document.getElementById('l_photo').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'progressAttachmentsPreviews'); };
         
         submit.onclick = () => {
           submit.disabled = true;
-          const payload = { logId: uniqueId, projectId: currentSelectedProjectId, tradeCategory: document.getElementById('l_cat').value, completionPercentage: document.getElementById('l_pct').value, commentNarrative: document.getElementById('l_comm').value, progressPhotoUrl: attachmentPhotoQueue.join(',') };
+          const payload = { logId: uniqueId, projectId: currentSelectedProjectId, tradeCategory: document.getElementById('l_cat').value, completionPercentage: document.getElementById('l_pct').value, commentNarrative: document.getElementById('l_comm').value, progressPhotoUrl: currentModalFiles.join(',') };
           callApi('saveProgressLog', payload).then(() => { closeModal(); loadProgressTimelineFeed(); });
         };
       }
       else if (type === 'vendor') {
         const uniqueId = isEdit ? (editData.vendorId || editData.rowId) : "VND-" + Math.random().toString(36).substr(2, 5).toUpperCase();
         title.innerText = isEdit ? "Modify Vendor" : "Add Vendor";
-        let avatarPhoto = isEdit ? editData.passport : "";
-        let attachmentPhotoQueue = isEdit && editData.attachments ? editData.attachments.split(',').filter(Boolean) : [];
+        currentAvatarPhoto = isEdit ? editData.passport : "";
+        if (isEdit && editData.attachments) currentModalFiles = editData.attachments.split(',').filter(Boolean);
 
         body.innerHTML = `
-          <div class="passport-frame-container">
-            <img id="passport_frame_view" src="${avatarPhoto ? getDirectImageUrl(avatarPhoto) : 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2250%22 height=%2250%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%236c757d%22/></svg>'}" style="width:100%; height:100%; object-fit:cover;">
+          <div class="passport-frame-container" style="position:relative;">
+            <img id="passport_frame_view" src="${currentAvatarPhoto ? getDirectImageUrl(currentAvatarPhoto) : 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2250%22 height=%2250%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%236c757d%22/></svg>'}" style="width:100%; height:100%; object-fit:cover;">
             <label style="position:absolute; bottom:2px; right:2px; background:var(--primary); color:#fff; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; cursor:pointer;">
               <i class="fas fa-camera" style="font-size:12px;"></i>
               <input type="file" id="v_pass_uploader" accept="image/*" capture="environment" style="display:none">
             </label>
+            <div id="v_pass_remove_btn" onclick="clearVendorAvatarPhoto()" style="position:absolute; top:2px; right:2px; background:var(--danger); color:white; border:2px solid white; border-radius:50%; width:24px; height:24px; display:${currentAvatarPhoto?'flex':'none'}; align-items:center; justify-content:center; font-size:12px; font-weight:900; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.2); z-index:15;">&times;</div>
           </div>
           <label ${labelStyle}>Company Name</label><input id="v_comp" value="${isEdit ? (editData.company || '') : ''}" ${largeInput}>
           <label ${labelStyle}>Trade Category</label><input id="v_trade" value="${isEdit ? (editData.trade || '') : ''}" ${largeInput}>
@@ -737,17 +763,17 @@
           ${isEdit ? `<button class="action-btn" id="v_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Vendor</button>` : ''}
         `;
 
-        if(isEdit && editData.attachments) populateModalInlineImageGalleryPreviews(editData.attachments, 'vendorAttachmentsPreviews');
+        if(currentModalFiles.length > 0) populateModalInlineImageGalleryPreviews('vendorAttachmentsPreviews');
         document.getElementById('v_pass_uploader').onchange = (e) => {
           const file = e.target.files[0]; if(!file) return;
           const r = new FileReader(); r.onload = async (evt) => {
             const comp = await compressImageToTargetLimit(evt.target.result, 190000);
             callApi('uploadImage', { base64: comp, name: "pass_" + uniqueId + ".jpg" }).then(res => { 
-              if(res && res.url) { avatarPhoto = res.url; document.getElementById('passport_frame_view').src = getDirectImageUrl(res.url); } 
+              if(res && res.url) { currentAvatarPhoto = res.url; document.getElementById('passport_frame_view').src = getDirectImageUrl(res.url); document.getElementById('v_pass_remove_btn').style.display = 'flex'; } 
             });
           }; r.readAsDataURL(file);
         };
-        document.getElementById('vendor_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'vendorAttachmentsPreviews'); };
+        document.getElementById('vendor_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'vendorAttachmentsPreviews'); };
 
         if(isEdit) {
           document.getElementById('v_delete_btn').onclick = () => {
@@ -766,14 +792,14 @@
           if (p2 !== "" && !/^[0-9]{11}$/.test(p2)) { alert("Phone 2 must be exactly 11 numeric digits."); return; }
           
           submit.disabled = true;
-          const payload = { vendorId: uniqueId, company: document.getElementById('v_comp').value, trade: document.getElementById('v_trade').value, contactName: document.getElementById('v_contact').value, phone1: String(p1), phone2: String(p2), email: document.getElementById('v_email').value, passport: String(avatarPhoto), attachments: String(attachmentPhotoQueue.join(',')), archived: "No" };
+          const payload = { vendorId: uniqueId, company: document.getElementById('v_comp').value, trade: document.getElementById('v_trade').value, contactName: document.getElementById('v_contact').value, phone1: String(p1), phone2: String(p2), email: document.getElementById('v_email').value, passport: String(currentAvatarPhoto), attachments: String(currentModalFiles.join(',')), archived: "No" };
           callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
         };
       }
       else if (type === 'workorder') {
         const uniqueId = isEdit ? editData.workOrderId : generateFrontendPreviewId('workorder');
         title.innerText = isEdit ? "Modify Order" : "Generate Order";
-        let attachmentPhotoQueue = isEdit && editData.attachments ? editData.attachments.split(',').filter(Boolean) : [];
+        if (isEdit && editData.attachments) currentModalFiles = editData.attachments.split(',').filter(Boolean);
 
         body.innerHTML = `
           <label ${labelStyle}>Order ID</label>
@@ -800,13 +826,13 @@
         const vSel = document.getElementById('w_vendor');
         vSel.innerHTML = (cache.vendors || []).map(v => `<option value="${v.vendorId || v.rowId}" ${isEdit && String(v.vendorId || v.rowId) === String(editData.vendorId) ? 'selected' : ''}>${v.company} [${v.trade}]</option>`).join('') || '<option value="">-- No Subcontractors --</option>';
 
-        if(isEdit && editData.attachments) populateModalInlineImageGalleryPreviews(editData.attachments, 'woAttachmentsPreviews');
-        document.getElementById('wo_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'woAttachmentsPreviews'); };
+        if(currentModalFiles.length > 0) populateModalInlineImageGalleryPreviews('woAttachmentsPreviews');
+        document.getElementById('wo_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'woAttachmentsPreviews'); };
 
         submit.onclick = () => {
           if(!vSel.value) { alert("Contract handler assigned entity missing."); return; }
           submit.disabled = true;
-          const payload = { workOrderId: uniqueId, projectId: currentSelectedProjectId, vendorId: vSel.value, description: document.getElementById('w_desc').value, amount: document.getElementById('w_amount').value, status: document.getElementById('w_status').value, attachments: attachmentPhotoQueue.join(',') };
+          const payload = { workOrderId: uniqueId, projectId: currentSelectedProjectId, vendorId: vSel.value, description: document.getElementById('w_desc').value, amount: document.getElementById('w_amount').value, status: document.getElementById('w_status').value, attachments: currentModalFiles.join(',') };
           callApi(isEdit ? 'updateWorkOrder' : 'saveWorkOrder', payload).then(() => { closeModal(); loadWorkOrdersListings(); });
         };
       }
