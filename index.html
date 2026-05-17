@@ -631,7 +631,6 @@
         `;
         submit.onclick = () => {
           const phoneInput = document.getElementById('p_phone').value.trim();
-          // UPGRADE VALIDATION: BLANK OK, IF SUPPLIED MUST BE 11 NUMERIC DIGITS STRINGS
           if (phoneInput !== "" && !/^[0-9]{11}$/.test(phoneInput)) { alert("Client phone field must be exactly 11 numeric digits."); return; }
           
           submit.disabled = true;
@@ -705,9 +704,11 @@
           callApi('saveProgressLog', payload).then(() => { closeModal(); loadProgressTimelineFeed(); });
         };
       }
+      
+      // UPGRADE INTEGRATION: DYNAMIC DELETION MATRIX ASSIGNED INTO VENDOR LAYOUTS
       else if (type === 'vendor') {
         const uniqueId = isEdit ? (editData.vendorId || editData.rowId) : "VND-" + Math.random().toString(36).substr(2, 5).toUpperCase();
-        title.innerText = isEdit ? "Modify Subcontractor" : "Add Vendor";
+        title.innerText = isEdit ? "Modify Vendor" : "Add Vendor";
         let avatarPhoto = isEdit ? editData.passport : "";
         let attachmentPhotoQueue = isEdit && editData.attachments ? editData.attachments.split(',').filter(Boolean) : [];
 
@@ -729,6 +730,8 @@
           <label ${labelStyle}>Form Attachments</label>
           <div id="vendorAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
           <label class="icon-upload-label"><i class="fas fa-camera"></i><input type="file" id="vendor_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
+          
+          ${isEdit ? `<button class="action-btn" id="v_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Vendor</button>` : ''}
         `;
 
         if(isEdit && editData.attachments) populateModalInlineImageGalleryPreviews(editData.attachments, 'vendorAttachmentsPreviews');
@@ -743,11 +746,19 @@
         };
         document.getElementById('vendor_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, attachmentPhotoQueue, 'vendorAttachmentsPreviews'); };
 
+        if(isEdit) {
+          document.getElementById('v_delete_btn').onclick = () => {
+            if(confirm("Confirm deletion of this subcontractor vendor account? This action cannot be reverted.")) {
+              document.getElementById('v_delete_btn').disabled = true; submit.disabled = true;
+              callApi('deleteVendor', { vendorId: uniqueId }).then(() => { closeModal(); refreshVendorsListView(); });
+            }
+          };
+        }
+
         submit.onclick = () => {
           const p1 = document.getElementById('v_phone1').value.trim(); 
           const p2 = document.getElementById('v_phone2').value.trim();
           
-          // UPGRADE VALIDATION: BLANK OK, IF SUPPLIED MUST BE 11 NUMERIC DIGITS STRINGS
           if (p1 !== "" && !/^[0-9]{11}$/.test(p1)) { alert("Phone 1 must be exactly 11 numeric digits."); return; }
           if (p2 !== "" && !/^[0-9]{11}$/.test(p2)) { alert("Phone 2 must be exactly 11 numeric digits."); return; }
           
