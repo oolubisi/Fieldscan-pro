@@ -385,10 +385,10 @@
           <div class="card" onclick="loadProjectConsoleHub('${p.projectId}')" style="border-left: 5px solid ${p.projectStatus === 'Active' ? 'var(--success)' : 'var(--muted)'}; cursor:pointer;">
             <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
               <strong style="font-size:20px; color:#000;">${p.clientName}</strong>
-              <span style="font-size:12px; font-weight:900; background:#000; color:#fff; padding:3px 8px; border-radius:4px;">${p.projectStatus.toUpperCase()}</span>
+              <span style="font-size:12px; font-weight:900; background:#000; color:#fff; padding:3px 8px; border-radius:4px;">${p.projectId}</span>
             </div>
             <div style="font-size:15px; font-weight:600; color:var(--primary);"><i class="fas fa-map-marker-alt"></i> ${p.siteLocation}</div>
-            <div style="font-size:12px; color:var(--muted); font-weight:700; margin-top:8px; border-top:1px dashed #ccc; padding-top:4px;">Reference Token Key ID: ${p.projectId}</div>
+            <div style="font-size:12px; color:var(--muted); font-weight:700; margin-top:8px; border-top:1px dashed #ccc; padding-top:4px;">Operational Track Phase Status: ${p.projectStatus.toUpperCase()}</div>
           </div>
         `).join('');
       });
@@ -399,7 +399,7 @@
       const p = cache.projects.find(item => item.projectId === projectId);
       if(!p) return;
 
-      document.getElementById('console-title-text').innerText = p.clientName;
+      document.getElementById('console-title-text').innerText = p.projectId;
       document.getElementById('c-meta-name').innerText = p.clientName;
       document.getElementById('c-meta-loc').innerText = p.siteLocation;
       document.getElementById('c-meta-phone').innerText = p.clientPhone;
@@ -423,7 +423,6 @@
       if (segKey === 'workorders') loadWorkOrdersListings();
     }
 
-    // UPGRADE INTEGRATION: WIRE CARD LOOP EVENTS TO ENABLE MODAL OPENING
     function openTakeOffModalById(id) {
       const match = cache.takeoffs.find(t => t.itemId === id);
       if (match) openModal('takeoff_item', match);
@@ -440,7 +439,6 @@
           container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">Survey framework blank.</p>`;
           return;
         }
-        // UPGRADE INTEGRATION: ADDED ONCLICK AND CURSOR POINTER TO SUB-CARDS
         container.innerHTML = projectItems.map(i => `
           <div class="card" onclick="openTakeOffModalById('${i.itemId}')" style="background:#fff; border-color:#000; cursor:pointer;">
             <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:6px;">
@@ -568,7 +566,6 @@
           alert(`Boundary Limit Conflict: "${file.name}" exceeds the 500KB configuration max parameter limit for PDF files.`);
           return;
         }
-
         const reader = new FileReader();
         reader.onload = async (evt) => {
           let base64StringData = evt.target.result;
@@ -587,6 +584,24 @@
       });
     }
 
+    // UPGRADE INTEGRATION: INTELLIGENT SEQUENTIAL CALCULATOR FOR DYNAMIC FRONT PREVIEWS
+    function generateFrontendPreviewId(type) {
+      const yy = new Date().getFullYear().toString().slice(-2); // Returns "26"
+      const prefix = type === 'project' ? `PRJ/${yy}/` : `WKO/${yy}/`;
+      const dataset = type === 'project' ? cache.projects : cache.workorders;
+      const idKey = type === 'project' ? 'projectId' : 'workOrderId';
+      
+      let maxNum = 0;
+      (dataset || []).forEach(item => {
+        const currentId = String(item[idKey] || '').trim();
+        if (currentId.indexOf(prefix) === 0) {
+          const numPart = parseInt(currentId.substring(prefix.length), 10);
+          if (!isNaN(numPart) && numPart > maxNum) { maxNum = numPart; }
+        }
+      });
+      return prefix + String(maxNum + 1).padStart(3, '0');
+    }
+
     function openModal(type, editData = null) {
       const body = document.getElementById('modalBody'); const submit = document.getElementById('modalSubmit');
       const title = document.getElementById('modalTitle'); const overlay = document.getElementById('modalOverlay');
@@ -595,10 +610,14 @@
       const largeInput = 'style="font-size: 20px; padding: 12px; margin-bottom: 5px;"';
       const labelStyle = 'style="font-size: 16px; color: var(--text); font-weight:800; display: block; margin-top: 10px; margin-bottom: 4px;"';
     
+      // UPGRADE INTEGRATION: ASSIGNED INTERACTIVE PREVIEW NUMBER BLOCK FOR NEW RUNS
       if (type === 'project') {
-        const uniqueId = isEdit ? editData.projectId : "";
+        const uniqueId = isEdit ? editData.projectId : generateFrontendPreviewId('project');
         title.innerText = isEdit ? "Modify Project Profile" : "Register New Jobsite";
         body.innerHTML = `
+          <label ${labelStyle}>Project ID</label>
+          <input id="p_id_view" value="${uniqueId}" disabled style="font-size: 20px; padding: 12px; margin-bottom: 5px; background: var(--card-light); font-weight: 800; color: #000;">
+          
           <label ${labelStyle}>Client / Enterprise Name</label><input id="p_client" value="${isEdit?editData.clientName:''}" ${largeInput}>
           <label ${labelStyle}>Geographic Site Location</label><input id="p_loc" value="${isEdit?editData.siteLocation:''}" ${largeInput}>
           <label ${labelStyle}>Client Mobile Route (11 Digits)</label><input id="p_phone" type="tel" maxlength="11" value="${isEdit?editData.clientPhone:''}" ${largeInput}>
@@ -617,52 +636,23 @@
           callApi(isEdit?'updateProject':'saveProject', payload).then(() => { closeModal(); refreshMasterDashboard(); if(isEdit) loadProjectConsoleHub(uniqueId); });
         };
       }
-      
-      // UPGRADE INTEGRATION: RECONFIGURED FOR INTERACTIVE EDIT DATA PASSES AND PURGING CONTROLS
       else if (type === 'takeoff_item') {
         const uniqueId = isEdit ? editData.itemId : "JOB-" + Math.random().toString(36).substr(2, 5).toUpperCase();
         title.innerText = isEdit ? "Modify Quantity Measure" : "Log Quantity Measure";
         let capturedPhotoUrl = isEdit ? editData.beforePhotoUrl : "";
-        
         body.innerHTML = `
-          <label ${labelStyle}>Room / Structural Area Site Node</label>
-          <input id="t_area" placeholder="e.g. Master Bedroom" value="${isEdit ? (editData.roomArea || '') : ''}" ${largeInput}>
-          
-          <label ${labelStyle}>Operational Trade Classification</label>
-          <input id="t_cat" placeholder="e.g. Tiling, Masonry" value="${isEdit ? (editData.tradeCategory || '') : ''}" ${largeInput}>
-          
-          <label ${labelStyle}>Specific Engineering Scope Description</label>
-          <input id="t_desc" placeholder="e.g. Install floor tiles" value="${isEdit ? (editData.description || '') : ''}" ${largeInput}>
-          
+          <label ${labelStyle}>Room / Structural Area Site Node</label><input id="t_area" placeholder="e.g. Master Bedroom" value="${isEdit ? (editData.roomArea || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Operational Trade Classification</label><input id="t_cat" placeholder="e.g. Tiling, Masonry" value="${isEdit ? (editData.tradeCategory || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Specific Engineering Scope Description</label><input id="t_desc" placeholder="e.g. Install floor tiles" value="${isEdit ? (editData.description || '') : ''}" ${largeInput}>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-            <div>
-              <label ${labelStyle}>Quantity Cost Value</label>
-              <input id="t_qty" type="number" step="0.01" value="${isEdit ? (editData.quantity || '') : ''}" ${largeInput}>
-            </div>
-            <div>
-              <label ${labelStyle}>Unit Parameter Label</label>
-              <select id="t_unit" ${largeInput}>
-                <option value="sqm" ${isEdit && editData.unit === 'sqm' ? 'selected' : ''}>Square Meters (sqm)</option>
-                <option value="cu.m" ${isEdit && editData.unit === 'cu.m' ? 'selected' : ''}>Cubic Meters (cu.m)</option>
-                <option value="meters" ${isEdit && editData.unit === 'meters' ? 'selected' : ''}>Linear Meters (m)</option>
-                <option value="pcs" ${isEdit && editData.unit === 'pcs' ? 'selected' : ''}>Pieces (pcs)</option>
-              </select>
-            </div>
+            <div><label ${labelStyle}>Quantity Cost Value</label><input id="t_qty" type="number" step="0.01" value="${isEdit ? (editData.quantity || '') : ''}" ${largeInput}></div>
+            <div><label ${labelStyle}>Unit Parameter Label</label><select id="t_unit" ${largeInput}><option value="sqm" ${isEdit && editData.unit === 'sqm' ? 'selected' : ''}>Square Meters (sqm)</option><option value="cu.m" ${isEdit && editData.unit === 'cu.m' ? 'selected' : ''}>Cubic Meters (cu.m)</option><option value="meters" ${isEdit && editData.unit === 'meters' ? 'selected' : ''}>Linear Meters (m)</option><option value="pcs" ${isEdit && editData.unit === 'pcs' ? 'selected' : ''}>Pieces (pcs)</option></select></div>
           </div>
-          <label ${labelStyle}>Field Inspector Remarks</label>
-          <textarea id="t_notes" rows="2" ${largeInput}>${isEdit ? (editData.scopeNotes || '') : ''}</textarea>
-          
-          <label class="action-btn" style="background:var(--text); color:#fff; display:block; text-align:center; padding:12px; cursor:pointer; margin-top:10px;">
-            <i class="fas fa-camera"></i> Snap Site Measurement Proof
-            <input type="file" id="t_photo" accept="image/*" style="display:none">
-          </label>
-          <div id="t_photo_preview" style="margin-top:10px; font-weight:800; font-size:12px; color:var(--success); text-align:center;">
-            ${isEdit && editData.beforePhotoUrl ? '✅ PROOF IMAGE RECORD ASSOCIATED' : ''}
-          </div>
-          
+          <label ${labelStyle}>Field Inspector Remarks</label><textarea id="t_notes" rows="2" ${largeInput}>${isEdit ? (editData.scopeNotes || '') : ''}</textarea>
+          <label class="action-btn" style="background:var(--text); color:#fff; display:block; text-align:center; padding:12px; cursor:pointer; margin-top:10px;"><i class="fas fa-camera"></i> Snap Site Measurement Proof<input type="file" id="t_photo" accept="image/*" style="display:none"></label>
+          <div id="t_photo_preview" style="margin-top:10px; font-weight:800; font-size:12px; color:var(--success); text-align:center;">${isEdit && editData.beforePhotoUrl ? '✅ PROOF IMAGE RECORD ASSOCIATED' : ''}</div>
           ${isEdit ? `<button class="action-btn" id="t_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Take-Off Record</button>` : ''}
         `;
-
         document.getElementById('t_photo').onchange = (e) => {
           const file = e.target.files[0]; if(!file) return;
           document.getElementById('t_photo_preview').innerText = "COMPRESSING RUN STREAMS...";
@@ -672,17 +662,14 @@
             callApi('uploadImage', { base64: comp, name: "survey_" + uniqueId + ".jpg" }).then(res => { if(res.url){ capturedPhotoUrl = res.url; document.getElementById('t_photo_preview').innerText = "✅ PHYSICAL CAPTURE IMAGE BUFFER SEAMLESSLY TRACED"; } });
           }; r.readAsDataURL(file);
         };
-
         if(isEdit) {
           document.getElementById('t_delete_btn').onclick = () => {
             if(confirm("Are you absolutely sure you want to completely delete this structural take-off record? This cannot be undone.")) {
-              document.getElementById('t_delete_btn').disabled = true;
-              submit.disabled = true;
+              document.getElementById('t_delete_btn').disabled = true; submit.disabled = true;
               callApi('deleteTakeOffItem', { itemId: uniqueId }).then(() => { closeModal(); loadTakeOffListings(); });
             }
           };
         }
-
         submit.onclick = () => {
           submit.disabled = true;
           const payload = { itemId: uniqueId, projectId: currentSelectedProjectId, roomArea: document.getElementById('t_area').value, tradeCategory: document.getElementById('t_cat').value, description: document.getElementById('t_desc').value, quantity: document.getElementById('t_qty').value, unit: document.getElementById('t_unit').value, beforePhotoUrl: capturedPhotoUrl, scopeNotes: document.getElementById('t_notes').value };
@@ -741,7 +728,6 @@
         `;
 
         if(isEdit && editData.attachments) populateModalInlineImageGalleryPreviews(editData.attachments, 'vendorAttachmentsPreviews');
-
         document.getElementById('v_pass_uploader').onchange = (e) => {
           const file = e.target.files[0]; if(!file) return;
           const r = new FileReader(); r.onload = async (evt) => {
@@ -761,12 +747,16 @@
           callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
         };
       }
+      // UPGRADE INTEGRATION: ASSIGNED INTERACTIVE PREVIEW NUMBER BLOCK FOR NEW RUNS
       else if (type === 'workorder') {
-        const uniqueId = isEdit ? editData.workOrderId : "";
+        const uniqueId = isEdit ? editData.workOrderId : generateFrontendPreviewId('workorder');
         title.innerText = isEdit ? "Update Dispatched Order" : "Generate Work Order";
         let attachmentPhotoQueue = isEdit && editData.attachments ? editData.attachments.split(',').filter(Boolean) : [];
 
         body.innerHTML = `
+          <label ${labelStyle}>Work Order ID</label>
+          <input id="w_id_view" value="${uniqueId}" disabled style="font-size: 20px; padding: 12px; margin-bottom: 5px; background: var(--card-light); font-weight: 800; color: #000;">
+          
           <label ${labelStyle}>Select Subcontractor Target</label>
           <select id="w_vendor" ${largeInput}></select>
           <label ${labelStyle}>Task Scope & Execution Deliverables</label>
@@ -839,7 +829,6 @@
       const pId = document.getElementById('rep-project-sel').value;
       const tSel = document.getElementById('rep-template-sel');
       if(!pId) { tSel.innerHTML = "<option value=''>-- Choose Valid Project Trace Entry Rows --</option>"; return; }
-      
       tSel.innerHTML = `
         <option value="">-- Choose Target Document Matrix Setup --</option>
         <option value="survey_complete">Comprehensive Quantity Take-Off Sheet Manifest</option>
@@ -961,7 +950,6 @@
           </div>
         `;
       }
-
       const totalCompiledPackage = headerStr + contentHtml;
       document.getElementById('report-preview-viewport').innerHTML = totalCompiledPackage;
       document.getElementById('report-print-container').innerHTML = totalCompiledPackage;
