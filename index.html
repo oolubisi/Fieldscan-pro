@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>FieldScan Pro</title>
+  
+  <link rel="manifest" href="manifest.json">
+  
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
@@ -222,6 +225,10 @@
 </head>
 <body>
 
+  <div id="sync-status" style="position:fixed; top:0; right:10px; z-index:9999; font-size:11px; background:rgba(0,0,0,0.7); color:#fff; padding:4px 10px; border-radius:0 0 8px 8px; font-weight:bold; display:none;">
+    <i class="fas fa-sync-alt fa-spin"></i> Syncing Offline Data...
+  </div>
+
   <div class="app">
     <main class="main">
       
@@ -350,7 +357,8 @@
 
   <script>
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzCxTeCxxbVe_j6ZIAoPcQb6jES-KmWKQG7KtyVBRe1e7R6zSWA5zY3FQeafqJdXTTV/exec"; 
-                     
+    const QUEUE_KEY = "fieldscan_sync_queue";
+                      
     async function callApi(action, data = {}) {
       try {
         console.log("SENDING API CALL:", action);
@@ -358,11 +366,71 @@
           method: "POST",
           body: JSON.stringify({ action: action, data: data }),
         });
-        return await response.json();
+        const result = await response.json();
+        
+        // Cache GET requests for offline read-only mode
+        if (action.startsWith('get')) {
+          localStorage.setItem('fieldscan_backup_' + action, JSON.stringify(result));
+        }
+        
+        return result;
       } catch (err) {
-        console.error("TRANSMISSION ERROR:", err);
-        return null;
+        console.warn("Network Error / Offline. Queuing request:", err);
+        
+        // If it's a request to fetch data, return cached backup
+        if (action.startsWith('get')) {
+          const backup = localStorage.getItem('fieldscan_backup_' + action);
+          return backup ? JSON.parse(backup) : (action === 'getStats' ? {activeVendors: '--'} : []); 
+        }
+
+        if (action === 'uploadImage') {
+          alert("Cannot upload photos while offline. Please try again when connected.");
+          return null; 
+        }
+
+        // Save POST requests (saves/updates/deletes) to the queue
+        const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+        queue.push({ action, data, timestamp: Date.now() });
+        localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+        
+        document.getElementById('sync-status').style.display = 'block';
+        alert("Connection lost. Your data was saved locally and will sync automatically when you regain signal.");
+        return { status: "queued" };
       }
+    }
+    
+    // Offline Sync Recovery
+    window.addEventListener('online', async () => {
+      document.getElementById('sync-status').style.display = 'none';
+      const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+      
+      if (queue.length === 0) return;
+
+      alert("Connection restored! Syncing offline records to the server...");
+      
+      for (const item of queue) {
+        await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: item.action, data: item.data }) });
+      }
+      
+      localStorage.removeItem(QUEUE_KEY);
+      
+      // Refresh active views after sync completes
+      refreshMasterDashboard();
+      if (document.getElementById('view-vendors').classList.contains('active-view')) refreshVendorsListView();
+      if (document.getElementById('view-project-console').classList.contains('active-view') && currentSelectedProjectId) {
+         loadTakeOffListings();
+         loadProgressTimelineFeed();
+         loadWorkOrdersListings();
+      }
+    });
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('Service Worker Registered Successfully!', reg))
+          .catch(err => console.error('Service Worker Registration Failed:', err));
+      });
     }
     
     let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [], workorders: [] };
@@ -376,7 +444,7 @@
 
     function refreshMasterDashboard() {
       callApi('getStats', {}).then(stats => {
-        if(stats) document.getElementById('badge-vendors').innerText = stats.activeVendors || '0';
+        if(stats && stats.status !== "queued") document.getElementById('badge-vendors').innerText = stats.activeVendors || '0';
       });
       callApi('getProjects', {}).then(data => {
         cache.projects = data || [];
