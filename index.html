@@ -17,6 +17,14 @@
       --danger: #C00000; --success: #157347; --border: #ADB5BD;
     }
 
+    /* Sunlight Glare Override Class */
+    body.sunlight-mode {
+      --bg: #FFFFFF; --card: #FFFFFF; --card-light: #FFFFFF;
+      --primary: #000000; --text: #000000; --muted: #000000; --border: #000000;
+    }
+    body.sunlight-mode .card { border: 4px solid #000000 !important; box-shadow: none !important; }
+    body.sunlight-mode input, body.sunlight-mode select, body.sunlight-mode textarea { border: 3px solid #000000 !important; font-weight: 700 !important; }
+
     body { 
       font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); 
       width: 100%; overflow-x: hidden; line-height: 1.5;
@@ -95,7 +103,10 @@
       <div id="view-dashboard" class="page-view active-view">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
           <h2 style="color:var(--primary); font-weight:800;"><i class="fas fa-compass"></i> FieldScan Pro</h2>
-          <button class="action-btn" style="width:auto; padding:10px 16px; font-size:14px;" onclick="openModal('project')">+ Project</button>
+          <div style="display:flex; gap:10px;">
+            <button class="action-btn" style="width:auto; padding:10px; background:#000;" onclick="document.body.classList.toggle('sunlight-mode')"><i class="fas fa-sun"></i></button>
+            <button class="action-btn" style="width:auto; padding:10px 16px; font-size:14px;" onclick="openModal('project')">+ Project</button>
+          </div>
         </div>
         
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:20px;">
@@ -110,9 +121,7 @@
         </div>
 
         <h3 style="font-weight:800; margin-bottom:12px; text-transform:uppercase; font-size:14px; letter-spacing:0.5px;">Active Projects</h3>
-        
         <input type="text" id="search-projects" placeholder="Search projects by name..." onkeyup="renderProjects()" style="margin-bottom:15px; padding:12px; font-size:16px!important; background:var(--card-light);">
-        
         <div id="project-master-list"></div>
       </div>
 
@@ -205,6 +214,10 @@
           <div id="report-preview-viewport" style="max-height:350px; overflow-y:auto; font-size:12px; background:#fff; border:1px solid var(--border); padding:10px;"></div>
           <button class="action-btn" style="margin-top:15px; background:var(--success);" onclick="window.print()"><i class="fas fa-print"></i> Dispatch To Paper A4</button>
         </div>
+        
+        <button class="action-btn" style="background:var(--danger); margin-top:30px; font-size:14px; padding:12px;" onclick="exportEmergencyOfflineBackup()">
+          <i class="fas fa-file-download"></i> Emergency Data Recovery Extract
+        </button>
       </div>
 
     </main>
@@ -224,7 +237,8 @@
   </div>
 
   <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbyMbq7heDDK6lelr4fD3ek24njHQDmo7zaC8ocusLGDyu4u-NxoO7e_Wt-zgaRkgIbJ/exec"; 
+    // --- INSERT YOUR GOOGLE APPS SCRIPT WEB APP URL HERE ---
+    const GAS_URL = "YOUR_WEB_APP_URL_HERE"; 
     
     // --- INDEXED DB ENGINE ---
     const DB_NAME = "FieldScanOfflineDB";
@@ -300,7 +314,6 @@
           return backup ? JSON.parse(backup) : (action === 'getStats' ? {activeVendors: '--'} : []); 
         }
 
-        // Action is queued alongside fully embedded base64 photos!
         await queueOfflineRequest(action, data);
         alert("Connection lost. Record & photos saved locally and will auto-sync when signal returns.");
         return { status: "queued" };
@@ -332,7 +345,21 @@
       } catch (err) { console.error("Sync Error: ", err); }
     });
 
-    if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js'); }); }
+    // PWA Service Worker & Update Listener
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then(reg => {
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                if (confirm("New FieldScan version available! Optimization patches have downloaded. Reload now?")) { window.location.reload(); }
+              }
+            });
+          });
+        });
+      });
+    }
     
     let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [], workorders: [] };
     let currentSelectedProjectId = null;
@@ -356,9 +383,7 @@
       const container = document.getElementById('project-master-list');
       const term = document.getElementById('search-projects').value.toLowerCase();
       
-      const filtered = cache.projects.filter(p => 
-        !term || p.clientName.toLowerCase().includes(term) || p.projectId.toLowerCase().includes(term)
-      );
+      const filtered = cache.projects.filter(p => !term || p.clientName.toLowerCase().includes(term) || p.projectId.toLowerCase().includes(term));
 
       if(filtered.length === 0) { container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px;">No projects found.</p>`; return; }
       
@@ -377,11 +402,8 @@
     function refreshVendorsListView() {
       callApi('getVendors', {}).then(data => {
         cache.vendors = data || [];
-        
-        // Populate Dynamic Trade Filters
         const trades = [...new Set(cache.vendors.map(v => v.trade).filter(Boolean))];
         document.getElementById('filter-vendor-trade').innerHTML = '<option value="">All Trades</option>' + trades.map(t => `<option value="${t}">${t}</option>`).join('');
-        
         renderVendors();
       });
     }
@@ -523,7 +545,6 @@
       box.style.display = 'flex';
       box.innerHTML = currentModalFiles.map((url, idx) => {
         const isPdf = url.toLowerCase().includes('pdf');
-        // Render either standard URL or directly display the cached Base64 string from IndexedDB
         const imgSource = url.startsWith('data:') ? url : getDirectImageUrl(url);
         let content = isPdf 
           ? `<div style="width:100%; height:100%; border:2px solid var(--text); border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center;"><i class="fas fa-file-pdf" style="font-size:24px; color:var(--danger);"></i></div>`
@@ -540,7 +561,6 @@
     function removeAttachmentByIndex(index, renderBoxId) { currentModalFiles.splice(index, 1); populateModalInlineImageGalleryPreviews(renderBoxId); }
     function clearVendorAvatarPhoto() { currentAvatarPhoto = ""; document.getElementById('passport_frame_view').src = 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2250%22 height=%2250%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%236c757d%22/></svg>'; document.getElementById('v_pass_remove_btn').style.display = 'none'; }
 
-    // OFFLINE CAPTURE UPGRADE: Storing raw base64 string directly into current context for queue
     function processIncomingMultiAttachments(filesList, previewTargetId) {
       if(!filesList || filesList.length === 0) return;
       Array.from(filesList).forEach(file => {
@@ -552,7 +572,7 @@
           let payload = evt.target.result;
           if (!isPdf) payload = await compressImageToTargetLimit(evt.target.result, 190000);
           
-          currentModalFiles.push(payload); // Bypass API Upload, Add to local cache immediately
+          currentModalFiles.push(payload); 
           populateModalInlineImageGalleryPreviews(previewTargetId);
         };
         reader.readAsDataURL(file);
@@ -644,15 +664,12 @@
         
         if(isEdit) { document.getElementById('t_delete_btn').onclick = () => { if(confirm("Confirm deletion?")) { document.getElementById('t_delete_btn').disabled = true; submit.disabled = true; callApi('deleteTakeOffItem', { itemId: uniqueId }).then(() => { closeModal(); loadTakeOffListings(); }); } }; }
         
-        // WITH GEO-STAMP UPGRADE
         submit.onclick = async () => {
-          submit.disabled = true; 
-          submit.innerText = "Acquiring GPS...";
+          submit.disabled = true; submit.innerText = "Acquiring GPS...";
           const gps = await getGPSLocation();
           submit.innerText = "Saving...";
           
           const finalNotes = document.getElementById('t_notes').value + (gps !== "GPS Unavailable" ? `\n\n[📍 Verified @ ${gps}]` : "");
-          // Using ||| delimiter so Base64 strings with commas don't explode the backend parser
           const payload = { itemId: uniqueId, projectId: currentSelectedProjectId, roomArea: document.getElementById('t_area').value, tradeCategory: document.getElementById('t_cat').value, description: document.getElementById('t_desc').value, quantity: document.getElementById('t_qty').value, unit: document.getElementById('t_unit').value, beforePhotoUrl: currentModalFiles.join('|||'), scopeNotes: finalNotes };
           callApi(isEdit ? 'updateTakeOffItem' : 'saveTakeOffItem', payload).then(() => { closeModal(); loadTakeOffListings(); });
         };
@@ -671,10 +688,8 @@
         `;
         document.getElementById('l_photo').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'progressAttachmentsPreviews'); };
         
-        // WITH GEO-STAMP UPGRADE
         submit.onclick = async () => {
-          submit.disabled = true; 
-          submit.innerText = "Acquiring GPS...";
+          submit.disabled = true; submit.innerText = "Acquiring GPS...";
           const gps = await getGPSLocation();
           submit.innerText = "Saving...";
 
@@ -716,7 +731,7 @@
           const file = e.target.files[0]; if(!file) return;
           const r = new FileReader(); r.onload = async (evt) => {
             const comp = await compressImageToTargetLimit(evt.target.result, 190000);
-            currentAvatarPhoto = comp; // Base 64 injected directly
+            currentAvatarPhoto = comp; 
             document.getElementById('passport_frame_view').src = comp;
             document.getElementById('v_pass_remove_btn').style.display = 'flex';
           }; r.readAsDataURL(file);
@@ -768,6 +783,32 @@
           callApi(isEdit ? 'updateWorkOrder' : 'saveWorkOrder', payload).then(() => { closeModal(); loadWorkOrdersListings(); });
         };
       }
+    }
+
+    // --- EMERGENCY JSON BLOB EXTRACTOR ---
+    async function exportEmergencyOfflineBackup() {
+      try {
+        const queue = await getQueuedRequests();
+        if (queue.length === 0) { alert("Sync pipeline safe. No un-synced data found in the local database."); return; }
+        const rawJson = JSON.stringify(queue, null, 2);
+        
+        const body = document.getElementById('modalBody'); const submit = document.getElementById('modalSubmit'); const title = document.getElementById('modalTitle');
+        title.innerText = "Emergency Data Extract";
+        body.innerHTML = `
+          <p style="font-size:13px; font-weight:700; color:var(--danger); margin-bottom:10px;">Copy the raw text, or download the JSON backup file.</p>
+          <textarea readonly style="width:100%; height:250px; font-family:monospace; font-size:11px; padding:10px; border:2px solid #000; border-radius:8px; background:#fff;">${rawJson}</textarea>
+          <button class="action-btn" id="blob-download-btn" style="background:var(--success); margin-top:15px; font-size:16px; padding:12px;"><i class="fas fa-download"></i> Save .JSON File</button>
+        `;
+        document.getElementById('modalOverlay').style.display = 'flex';
+        submit.innerText = "Acknowledge"; submit.onclick = () => { closeModal(); };
+
+        document.getElementById('blob-download-btn').onclick = () => {
+          const blob = new Blob([rawJson], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = "FieldScan_Recovery_" + new Date().getTime() + ".json";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        };
+      } catch (err) { alert("Database access failure: " + err.message); }
     }
 
     function compressImageToTargetLimit(base64Str, targetMaxBytes) {
