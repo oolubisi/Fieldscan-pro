@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FieldScan Pro</title>
   
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="./manifest.json">
   
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -24,6 +24,7 @@
       --border: #ADB5BD;      
     }
 
+    /* APP-LIKE UI UPGRADES */
     body { 
       font-family: 'Inter', sans-serif; 
       background: var(--bg); 
@@ -31,14 +32,28 @@
       width: 100%; 
       overflow-x: hidden; 
       line-height: 1.5;
+      
+      -webkit-tap-highlight-color: transparent; 
+      -webkit-user-select: none;                 
+      user-select: none;
+      overscroll-behavior-y: contain;            
+    }
+
+    input, select, textarea {
+      -webkit-user-select: text;
+      user-select: text;
     }
     
     .main { 
       width: 100%; 
       max-width: 500px; 
       margin: 0 auto; 
-      padding: 20px 16px 100px 16px; 
-      min-height: 100vh; 
+      min-height: 100vh;
+      /* SAFE AREA PADDING FOR NOTCHES & HOME BARS */
+      padding-top: calc(20px + env(safe-area-inset-top));
+      padding-left: calc(16px + env(safe-area-inset-left));
+      padding-right: calc(16px + env(safe-area-inset-right));
+      padding-bottom: calc(100px + env(safe-area-inset-bottom));
     }
 
     .segment-bar {
@@ -357,7 +372,58 @@
 
   <script>
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzCxTeCxxbVe_j6ZIAoPcQb6jES-KmWKQG7KtyVBRe1e7R6zSWA5zY3FQeafqJdXTTV/exec"; 
-    const QUEUE_KEY = "fieldscan_sync_queue";
+    
+    // --- INDEXED DB ENGINE (REPLACES LOCALSTORAGE QUEUE) ---
+    const DB_NAME = "FieldScanOfflineDB";
+    const STORE_NAME = "syncQueue";
+
+    function openQueueDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = (e) => {
+          e.target.result.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
+        };
+        request.onsuccess = (e) => resolve(e.target.result);
+        request.onerror = (e) => reject(e.target.error);
+      });
+    }
+
+    async function queueOfflineRequest(action, data) {
+      const db = await openQueueDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        store.add({ action, data, timestamp: Date.now() });
+        tx.oncomplete = () => {
+          document.getElementById('sync-status').style.display = 'block';
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function getQueuedRequests() {
+      const db = await openQueueDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function clearQueuedRequests() {
+      const db = await openQueueDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        store.clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    // -------------------------------------------------------
                       
     async function callApi(action, data = {}) {
       try {
@@ -368,7 +434,7 @@
         });
         const result = await response.json();
         
-        // Cache GET requests for offline read-only mode
+        // Cache GET requests for offline read-only mode (LocalStorage is fine here for simple read caches)
         if (action.startsWith('get')) {
           localStorage.setItem('fieldscan_backup_' + action, JSON.stringify(result));
         }
@@ -388,46 +454,47 @@
           return null; 
         }
 
-        // Save POST requests (saves/updates/deletes) to the queue
-        const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
-        queue.push({ action, data, timestamp: Date.now() });
-        localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+        // Save POST requests to IndexedDB to bypass 5MB Quota Crash
+        await queueOfflineRequest(action, data);
         
-        document.getElementById('sync-status').style.display = 'block';
         alert("Connection lost. Your data was saved locally and will sync automatically when you regain signal.");
         return { status: "queued" };
       }
     }
     
-    // Offline Sync Recovery
+    // Offline Sync Recovery Upgrade
     window.addEventListener('online', async () => {
       document.getElementById('sync-status').style.display = 'none';
-      const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
-      
-      if (queue.length === 0) return;
+      try {
+        const queue = await getQueuedRequests();
+        
+        if (queue.length === 0) return;
 
-      alert("Connection restored! Syncing offline records to the server...");
-      
-      for (const item of queue) {
-        await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: item.action, data: item.data }) });
-      }
-      
-      localStorage.removeItem(QUEUE_KEY);
-      
-      // Refresh active views after sync completes
-      refreshMasterDashboard();
-      if (document.getElementById('view-vendors').classList.contains('active-view')) refreshVendorsListView();
-      if (document.getElementById('view-project-console').classList.contains('active-view') && currentSelectedProjectId) {
-         loadTakeOffListings();
-         loadProgressTimelineFeed();
-         loadWorkOrdersListings();
+        alert("Connection restored! Syncing offline records to the server...");
+        
+        for (const item of queue) {
+          await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: item.action, data: item.data }) });
+        }
+        
+        await clearQueuedRequests(); // Clear database after successful sync
+        
+        // Refresh active views after sync completes
+        refreshMasterDashboard();
+        if (document.getElementById('view-vendors').classList.contains('active-view')) refreshVendorsListView();
+        if (document.getElementById('view-project-console').classList.contains('active-view') && currentSelectedProjectId) {
+           loadTakeOffListings();
+           loadProgressTimelineFeed();
+           loadWorkOrdersListings();
+        }
+      } catch (err) {
+        console.error("Failed to sync offline queue: ", err);
       }
     });
 
-    // Register Service Worker
+    // Register Service Worker with RELATIVE PATH fix for GitHub Pages
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
+        navigator.serviceWorker.register('./sw.js')
           .then(reg => console.log('Service Worker Registered Successfully!', reg))
           .catch(err => console.error('Service Worker Registration Failed:', err));
       });
@@ -621,7 +688,6 @@
       });
     }
 
-    // REFRACTORED INLINE REMOVAL PREVIEW PANEL ENGINE
     function populateModalInlineImageGalleryPreviews(renderBoxId) {
       const box = document.getElementById(renderBoxId); if(!box) return;
       if(currentModalFiles.length === 0) { box.innerHTML = ''; box.style.display = 'none'; return; }
