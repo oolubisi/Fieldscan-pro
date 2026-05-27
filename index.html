@@ -8,47 +8,123 @@
   <link rel="manifest" href="./manifest.json">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   
-  <!-- Links to your new CSS file -->
-  <link rel="stylesheet" href="styles.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #FFFFFF; --card: #F1F3F5; --card-light: #E9ECEF;
+      --primary: #0056b3; --text: #000000; --muted: #495057;
+      --danger: #C00000; --success: #157347; --border: #ADB5BD;
+    }
+
+    /* Sunlight Glare Override Class */
+    body.sunlight-mode {
+      --bg: #FFFFFF; --card: #FFFFFF; --card-light: #FFFFFF;
+      --primary: #000000; --text: #000000; --muted: #000000; --border: #000000;
+    }
+    body.sunlight-mode .card { border: 4px solid #000000 !important; box-shadow: none !important; }
+    body.sunlight-mode input, body.sunlight-mode select, body.sunlight-mode textarea { border: 3px solid #000000 !important; font-weight: 700 !important; }
+
+    body { 
+      font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); 
+      width: 100%; overflow-x: hidden; line-height: 1.5;
+      -webkit-tap-highlight-color: transparent; -webkit-user-select: none;                 
+      user-select: none; overscroll-behavior-y: contain;            
+    }
+
+    input, select, textarea { -webkit-user-select: text; user-select: text; }
+    
+    .main { 
+      width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh;
+      padding-top: calc(20px + env(safe-area-inset-top));
+      padding-left: calc(16px + env(safe-area-inset-left));
+      padding-right: calc(16px + env(safe-area-inset-right));
+      padding-bottom: calc(100px + env(safe-area-inset-bottom));
+    }
+
+    .segment-bar { display: flex; background: var(--card); padding: 4px; border-radius: 14px; margin-bottom: 20px; border: 2px solid var(--text); }
+    .segment-btn { flex: 1; padding: 12px 4px; border: none; background: transparent; font-weight: 800; font-size: 11px; cursor: pointer; border-radius: 10px; text-transform: uppercase; color: var(--muted); text-align: center; }
+    .segment-btn.active { background: var(--text); color: #fff; }
+
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 3px solid var(--text); }
+    .header-group { display: flex; align-items: center; gap: 12px; }
+    .home-btn { background: var(--text); border: none; color: white; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px;}
+    h2 { font-size: 24px; font-weight: 800; color: var(--text); }
+
+    .card { background: var(--bg); border-radius: 20px; padding: 20px; border: 2px solid var(--border); margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    label { display: block; font-weight: 800; font-size: 16px; color: var(--text); margin-bottom: 6px; margin-top: 12px; }
+    input, select, textarea { width: 100%; padding: 16px; margin-bottom: 10px; border-radius: 12px; border: 2px solid var(--text); background: white; color: black; font-size: 20px !important; font-weight: 500; }
+    input:disabled, select:disabled, textarea:disabled { background: #e9ecef; border-color: #adb5bd; color: #495057; opacity: 1; }
+
+    .action-btn { background: var(--text); color: white; border: none; padding: 20px; border-radius: 15px; font-weight: 900; width: 100%; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; }
+
+    .icon-upload-label { background: var(--card-light); border: 2px solid var(--text); width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; color: var(--text); margin: 12px auto; box-shadow: 0 2px 5px rgba(0,0,0,0.15); }
+    .icon-upload-label:active { background: var(--border); }
+
+    .modal-preview-grid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 8px; background: var(--card); padding: 12px; border-radius: 12px; border: 2px dashed var(--border); }
+    .modal-preview-thumb { width: 60px; height: 60px; object-fit: cover; border: 2px solid var(--text); border-radius: 6px; }
+
+    .passport-frame-container { position: relative; width: 115px; height: 115px; margin: 0 auto 14px auto; border: 3px solid var(--text); border-radius: 50%; background: #ffffff; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.95); display: none; justify-content: center; align-items: center; z-index: 5000; padding: 15px; }
+    .modal { background: var(--bg); width: 100%; max-width: 480px; padding: 25px; border-radius: 24px; border: 3px solid var(--text); max-height: 92vh; overflow-y: auto; }
+
+    .page-view { display: none; }
+    .active-view { display: block; }
+
+    .timeline-feed { position: relative; padding-left: 20px; border-left: 3px solid #000; margin-top: 15px; margin-left: 10px;}
+    .timeline-node { position: relative; margin-bottom: 25px; }
+    .timeline-node::before { content: ''; position: absolute; left: -27px; top: 4px; background: #fff; border: 4px solid var(--primary); width: 14px; height: 14px; border-radius: 50%; }
+
+    #report-print-container { display: none; background: #ffffff; color: #000000; padding: 0; }
+    .print-table { width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 18px; font-size: 14px; }
+    .print-table th, .print-table td { border: 1px solid #000000; padding: 8px 10px; text-align: left; }
+    .print-table th { background: #f2f2f2; font-weight: 800; text-transform: uppercase; }
+    .report-thumb { max-width: 140px; max-height: 140px; object-fit: cover; border: 2px solid #000000; margin: 6px; border-radius: 6px; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #report-print-container, #report-print-container * { visibility: visible; }
+      #report-print-container { display: block !important; position: absolute; left: 0; top: 0; width: 100%; }
+      @page { size: A4; margin: 15mm; }
+      .page-break { page-break-before: always; padding-top: 10px; }
+    }
+  </style>
 </head>
 <body>
 
-  <div id="sync-status" class="sync-banner" style="display:none;">
+  <div id="sync-status" style="position:fixed; top:0; right:10px; z-index:9999; font-size:11px; background:rgba(0,0,0,0.7); color:#fff; padding:4px 10px; border-radius:0 0 8px 8px; font-weight:bold; display:none;">
     <i class="fas fa-sync-alt fa-spin"></i> Syncing Offline Data...
   </div>
 
   <div class="app">
     <main class="main">
       
-      <!-- DASHBOARD VIEW -->
       <div id="view-dashboard" class="page-view active-view">
-        <div class="page-header-simple">
-          <h2 class="brand-title"><i class="fas fa-compass"></i> FieldScan Pro</h2>
-          <div class="btn-group">
-            <button class="action-btn icon-btn" onclick="document.body.classList.toggle('sunlight-mode')"><i class="fas fa-sun"></i></button>
-            <button class="action-btn small-btn" onclick="openModal('project')">+ Project</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <h2 style="color:var(--primary); font-weight:800;"><i class="fas fa-compass"></i> FieldScan Pro</h2>
+          <div style="display:flex; gap:10px;">
+            <button class="action-btn" style="width:auto; padding:10px; background:#000;" onclick="document.body.classList.toggle('sunlight-mode')"><i class="fas fa-sun"></i></button>
+            <button class="action-btn" style="width:auto; padding:10px 16px; font-size:14px;" onclick="openModal('project')">+ Project</button>
           </div>
         </div>
         
-        <div class="dashboard-grid">
-          <div class="card dash-card" onclick="showPage('vendors')">
-            <div id="badge-vendors" class="dash-badge">--</div>
-            <small>Subcontractors</small>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:20px;">
+          <div class="card" style="margin:0; text-align:center; background:var(--card); border-color:#000; cursor:pointer;" onclick="showPage('vendors')">
+            <div id="badge-vendors" style="font-size:28px; font-weight:900;">--</div>
+            <small style="font-weight:800; text-transform:uppercase; font-size:11px;">Subcontractors</small>
           </div>
-          <div class="card dash-card" onclick="showPage('reports')">
-            <div class="dash-badge"><i class="fas fa-print"></i></div>
-            <small>Reports Engine</small>
+          <div class="card" style="margin:0; text-align:center; background:var(--card); border-color:#000; cursor:pointer;" onclick="showPage('reports')">
+            <div style="font-size:28px;"><i class="fas fa-print"></i></div>
+            <small style="font-weight:800; text-transform:uppercase; font-size:11px;">Reports Engine</small>
           </div>
         </div>
 
-        <h3 class="section-title">Active Projects</h3>
-        <input type="text" id="search-projects" class="search-bar" placeholder="Search projects by name..." onkeyup="renderProjects()">
+        <h3 style="font-weight:800; margin-bottom:12px; text-transform:uppercase; font-size:14px; letter-spacing:0.5px;">Active Projects</h3>
+        <input type="text" id="search-projects" placeholder="Search projects by name..." onkeyup="renderProjects()" style="margin-bottom:15px; padding:12px; font-size:16px!important; background:var(--card-light);">
         <div id="project-master-list"></div>
       </div>
 
-      <!-- PROJECT CONSOLE VIEW -->
       <div id="view-project-console" class="page-view">
         <div class="page-header">
           <div class="header-group">
@@ -65,54 +141,53 @@
         </div>
 
         <div id="console-seg-profile" class="console-tab-window active-view">
-          <div class="card profile-card">
-            <h4 class="meta-label">Customer Profile Meta</h4>
-            <h3 id="c-meta-name" class="meta-name">--</h3>
-            <p class="meta-detail"><i class="fas fa-map-marker-alt"></i> <span id="c-meta-loc">--</span></p>
-            <p class="meta-detail"><i class="fas fa-phone"></i> <a id="c-meta-phone" href="#">--</a></p>
-            <textarea id="c-meta-notes" disabled class="meta-notes"></textarea>
-            <button class="action-btn outline-btn" onclick="triggerEditProjectProfile()">Modify Client Records</button>
+          <div class="card" style="border-left:6px solid var(--primary);">
+            <h4 style="text-transform:uppercase; font-size:13px; color:var(--muted); margin-bottom:5px;">Customer Profile Meta</h4>
+            <h3 id="c-meta-name" style="font-size:24px; font-weight:900; margin-bottom:8px;">--</h3>
+            <p style="font-size:16px; font-weight:700; margin-bottom:4px;"><i class="fas fa-map-marker-alt"></i> <span id="c-meta-loc">--</span></p>
+            <p style="font-size:16px; font-weight:700; margin-bottom:12px;"><i class="fas fa-phone"></i> <a id="c-meta-phone" href="#" style="color:var(--primary); text-decoration:none;">--</a></p>
+            <textarea id="c-meta-notes" disabled style="font-size:15px !important; background:var(--card-light); min-height:80px; margin:0; border-color:var(--border);"></textarea>
+            <button class="action-btn" style="margin-top:15px; font-size:14px; padding:12px; background:var(--card-light); color:#000; border:1px solid #000;" onclick="triggerEditProjectProfile()">Modify Client Records</button>
           </div>
         </div>
 
         <div id="console-seg-takeoff" class="console-tab-window page-view">
-          <div class="list-header">
-            <h3>DIMENSIONAL SURVEY ITEMS</h3>
-            <button class="action-btn small-btn" onclick="openModal('takeoff_item')">+ Log Item</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px;">
+            <h3 style="font-size:16px; font-weight:800; flex:1;">DIMENSIONAL SURVEY ITEMS</h3>
+            <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px;" onclick="openModal('takeoff_item')">+ Log Item</button>
           </div>
           <div id="console-takeoff-list"></div>
         </div>
 
         <div id="console-seg-progress" class="console-tab-window page-view">
-          <div class="list-header">
-            <h3>TIMELINE LOG FEED</h3>
-            <button class="action-btn small-btn success-btn" onclick="openModal('progress_entry')">+ Update Status</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px;">
+            <h3 style="font-size:16px; font-weight:800; flex:1;">TIMELINE LOG FEED</h3>
+            <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px; background:var(--success);" onclick="openModal('progress_entry')">+ Update Status</button>
           </div>
           <div id="console-progress-feed" class="timeline-feed"></div>
         </div>
 
         <div id="console-seg-workorders" class="console-tab-window page-view">
-          <div class="list-header">
-            <h3>SUBCONTRACTOR WORK ORDERS</h3>
-            <button class="action-btn small-btn primary-btn" onclick="openModal('workorder')">+ Dispatch</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px;">
+            <h3 style="font-size:16px; font-weight:800; flex:1;">SUBCONTRACTOR WORK ORDERS</h3>
+            <button class="action-btn" style="width:auto; padding:8px 14px; font-size:13px; background:var(--primary);" onclick="openModal('workorder')">+ Dispatch</button>
           </div>
           <div id="console-workorders-list"></div>
         </div>
       </div>
 
-      <!-- VENDORS VIEW -->
       <div id="view-vendors" class="page-view">
         <div class="page-header">
           <div class="header-group">
             <button class="home-btn" onclick="showPage('dashboard')"><i class="fas fa-home"></i></button>
             <h2>Subcontractors</h2>
           </div>
-          <button class="action-btn add-btn" onclick="openModal('vendor')">+</button>
+          <button class="action-btn" style="width:auto; padding:10px 22px; font-size: 22px;" onclick="openModal('vendor')">+</button>
         </div>
         
-        <div class="filter-group">
-          <input type="text" id="search-vendor" class="search-bar flex-2" placeholder="Search Name..." onkeyup="renderVendors()">
-          <select id="filter-vendor-trade" class="search-bar flex-1" onchange="renderVendors()">
+        <div style="display:flex; gap:10px; margin-bottom:15px;">
+          <input type="text" id="search-vendor" placeholder="Search Name..." onkeyup="renderVendors()" style="margin:0; padding:12px; font-size:16px!important; flex:2;">
+          <select id="filter-vendor-trade" onchange="renderVendors()" style="margin:0; padding:12px; font-size:16px!important; flex:1;">
             <option value="">All Trades</option>
           </select>
         </div>
@@ -120,7 +195,6 @@
         <div id="vendor-master-list"></div>
       </div>
 
-      <!-- REPORTS VIEW -->
       <div id="view-reports" class="page-view">
         <div class="page-header">
           <div class="header-group">
@@ -133,21 +207,15 @@
           <select id="rep-project-sel" onchange="handleReportOptionsPopulation()"></select>
           <label>Select Template</label>
           <select id="rep-template-sel"></select>
-          <button class="action-btn primary-btn margin-top-15" onclick="compileFieldReport()">Compile Document Bundle</button>
+          <button class="action-btn" style="background:var(--primary); margin-top:15px;" onclick="compileFieldReport()">Compile Document Bundle</button>
         </div>
-        <div id="report-onscreen-preview-card" class="card preview-card" style="display:none;">
-          <h4 class="preview-title"><i class="fas fa-eye"></i> Production Print Preview</h4>
-          <div id="report-preview-viewport" class="preview-viewport"></div>
-          
-          <div class="btn-group margin-top-15">
-            <button class="action-btn print-btn flex-1" onclick="window.print()"><i class="fas fa-print"></i></button>
-            <button class="action-btn whatsapp-btn flex-4" id="btn-share-pdf" onclick="exportAndSharePDF()">
-              <i class="fab fa-whatsapp"></i> Share PDF Report
-            </button>
-          </div>
+        <div id="report-onscreen-preview-card" class="card" style="display:none; border:3px dashed var(--text);">
+          <h4 style="text-transform:uppercase; font-weight:800; margin-bottom:10px;"><i class="fas fa-eye"></i> Production Print Preview</h4>
+          <div id="report-preview-viewport" style="max-height:350px; overflow-y:auto; font-size:12px; background:#fff; border:1px solid var(--border); padding:10px;"></div>
+          <button class="action-btn" style="margin-top:15px; background:var(--success);" onclick="window.print()"><i class="fas fa-print"></i> Dispatch To Paper A4</button>
         </div>
-
-        <button class="action-btn danger-btn margin-top-30" onclick="exportEmergencyOfflineBackup()">
+        
+        <button class="action-btn" style="background:var(--danger); margin-top:30px; font-size:14px; padding:12px;" onclick="exportEmergencyOfflineBackup()">
           <i class="fas fa-file-download"></i> Emergency Data Recovery Extract
         </button>
       </div>
@@ -157,19 +225,758 @@
 
   <div id="report-print-container"></div>
 
-  <!-- MASTER MODAL -->
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal">
       <h3 id="modalTitle">Form</h3>
-      <div id="modalBody" class="margin-top-15"></div>
-      <div class="btn-group margin-top-20">
-        <button class="action-btn cancel-btn" onclick="closeModal()">Cancel</button>
+      <div id="modalBody" style="margin-top:15px;"></div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="action-btn" style="background:#444" onclick="closeModal()">Cancel</button>
         <button class="action-btn" id="modalSubmit">Save</button>
       </div>
     </div>
   </div>
 
-  <!-- Links to your new JS file -->
-  <script src="app.js"></script>
+  <script>
+    // --- INSERT YOUR GOOGLE APPS SCRIPT WEB APP URL HERE ---
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbyMbq7heDDK6lelr4fD3ek24njHQDmo7zaC8ocusLGDyu4u-NxoO7e_Wt-zgaRkgIbJ/exec"; 
+    
+    // --- INDEXED DB ENGINE ---
+    const DB_NAME = "FieldScanOfflineDB";
+    const STORE_NAME = "syncQueue";
+
+    function openQueueDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = (e) => { e.target.result.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true }); };
+        request.onsuccess = (e) => resolve(e.target.result);
+        request.onerror = (e) => reject(e.target.error);
+      });
+    }
+
+    async function queueOfflineRequest(action, data) {
+      const db = await openQueueDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        store.add({ action, data, timestamp: Date.now() });
+        tx.oncomplete = () => { document.getElementById('sync-status').style.display = 'block'; resolve(); };
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function getQueuedRequests() {
+      const db = await openQueueDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function clearQueuedRequests() {
+      const db = await openQueueDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        store.clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    // --- GEO-STAMPING ENGINE ---
+    function getGPSLocation() {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve("GPS Not Supported");
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(`Lat: ${pos.coords.latitude.toFixed(5)}, Lng: ${pos.coords.longitude.toFixed(5)}`),
+          (err) => resolve("GPS Unavailable"),
+          { timeout: 7000, maximumAge: 60000 }
+        );
+      });
+    }
+                      
+    async function callApi(action, data = {}) {
+      try {
+        console.log("SENDING API CALL:", action);
+        const response = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: action, data: data }) });
+        const result = await response.json();
+        
+        if (action.startsWith('get')) localStorage.setItem('fieldscan_backup_' + action, JSON.stringify(result));
+        return result;
+      } catch (err) {
+        console.warn("Network Error / Offline. Queuing request:", err);
+        
+        if (action.startsWith('get')) {
+          const backup = localStorage.getItem('fieldscan_backup_' + action);
+          return backup ? JSON.parse(backup) : (action === 'getStats' ? {activeVendors: '--'} : []); 
+        }
+
+        await queueOfflineRequest(action, data);
+        alert("Connection lost. Record & photos saved locally and will auto-sync when signal returns.");
+        return { status: "queued" };
+      }
+    }
+    
+    // Offline Sync Recovery
+    window.addEventListener('online', async () => {
+      document.getElementById('sync-status').style.display = 'none';
+      try {
+        const queue = await getQueuedRequests();
+        if (queue.length === 0) return;
+
+        alert("Signal Restored! Pushing saved field data to the server...");
+        
+        for (const item of queue) {
+          await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: item.action, data: item.data }) });
+        }
+        
+        await clearQueuedRequests(); 
+        
+        refreshMasterDashboard();
+        if (document.getElementById('view-vendors').classList.contains('active-view')) refreshVendorsListView();
+        if (document.getElementById('view-project-console').classList.contains('active-view') && currentSelectedProjectId) {
+           loadTakeOffListings();
+           loadProgressTimelineFeed();
+           loadWorkOrdersListings();
+        }
+      } catch (err) { console.error("Sync Error: ", err); }
+    });
+
+    // PWA Service Worker & Update Listener
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then(reg => {
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                if (confirm("New FieldScan version available! Optimization patches have downloaded. Reload now?")) { window.location.reload(); }
+              }
+            });
+          });
+        });
+      });
+    }
+    
+    let cache = { projects: [], takeoffs: [], progressLogs: [], vendors: [], workorders: [] };
+    let currentSelectedProjectId = null;
+    let currentModalFiles = [];
+    let currentAvatarPhoto = "";
+
+    window.onload = () => { refreshMasterDashboard(); };
+
+    // --- REAL TIME DASHBOARDS ---
+    function refreshMasterDashboard() {
+      callApi('getStats', {}).then(stats => {
+        if(stats && stats.status !== "queued") document.getElementById('badge-vendors').innerText = stats.activeVendors || '0';
+      });
+      callApi('getProjects', {}).then(data => {
+        cache.projects = data || [];
+        renderProjects();
+      });
+    }
+
+    function renderProjects() {
+      const container = document.getElementById('project-master-list');
+      const term = document.getElementById('search-projects').value.toLowerCase();
+      
+      const filtered = cache.projects.filter(p => !term || p.clientName.toLowerCase().includes(term) || p.projectId.toLowerCase().includes(term));
+
+      if(filtered.length === 0) { container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px;">No projects found.</p>`; return; }
+      
+      container.innerHTML = filtered.map(p => `
+        <div class="card" onclick="loadProjectConsoleHub('${p.projectId}')" style="border-left: 5px solid ${p.projectStatus === 'Active' ? 'var(--success)' : (p.projectStatus === 'Declined' ? 'var(--danger)' : 'var(--muted)')}; cursor:pointer;">
+          <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
+            <strong style="font-size:20px; color:#000;">${p.clientName}</strong>
+            <span style="font-size:12px; font-weight:900; background:#000; color:#fff; padding:3px 8px; border-radius:4px;">${p.projectId}</span>
+          </div>
+          <div style="font-size:15px; font-weight:600; color:var(--primary);"><i class="fas fa-map-marker-alt"></i> ${p.siteLocation}</div>
+          <div style="font-size:12px; color:var(--muted); font-weight:700; margin-top:8px; border-top:1px dashed #ccc; padding-top:4px;">Status: ${p.projectStatus.toUpperCase()}</div>
+        </div>
+      `).join('');
+    }
+
+    function refreshVendorsListView() {
+      callApi('getVendors', {}).then(data => {
+        cache.vendors = data || [];
+        const trades = [...new Set(cache.vendors.map(v => v.trade).filter(Boolean))];
+        document.getElementById('filter-vendor-trade').innerHTML = '<option value="">All Trades</option>' + trades.map(t => `<option value="${t}">${t}</option>`).join('');
+        renderVendors();
+      });
+    }
+
+    function renderVendors() {
+      const container = document.getElementById('vendor-master-list');
+      const term = document.getElementById('search-vendor').value.toLowerCase();
+      const trade = document.getElementById('filter-vendor-trade').value;
+
+      const filtered = cache.vendors.filter(v => 
+        (!term || (v.company||'').toLowerCase().includes(term) || (v.contactName||'').toLowerCase().includes(term)) &&
+        (!trade || v.trade === trade)
+      );
+
+      if (filtered.length === 0) { container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px;">No vendors matched.</p>`; return; }
+
+      container.innerHTML = filtered.map(v => `
+        <div class="card" onclick="openVendorModalById('${v.vendorId || v.rowId}')" style="cursor:pointer; display:flex; align-items:center; gap:15px;">
+          <img src="${getDirectImageUrl(v.passport) || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2240%22 height=%2240%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%23ccc%22/></svg>'}" style="width:55px; height:55px; object-fit:cover; border-radius:50%; border:2px solid #000; flex-shrink:0;">
+          <div style="flex:1;">
+            <strong style="font-size:20px;">${v.company || 'Unnamed Subcontractor'}</strong><br>
+            <span style="font-weight:800; color:var(--success); font-size:14px; text-transform:uppercase;">${v.trade || ''}</span><br>
+            <span style="font-size:13px; font-weight:700; color:var(--muted);"><i class="fas fa-user"></i> Rep: ${v.contactName || ''}</span><br>
+            <span style="font-size:13px; font-weight:700; color:var(--muted);"><i class="fas fa-phone"></i> P1: ${v.phone1 || v.phone || ''} | P2: ${v.phone2 || ''}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // --- CONSOLE LOADING ---
+    function loadProjectConsoleHub(projectId) {
+      currentSelectedProjectId = projectId;
+      const p = cache.projects.find(item => item.projectId === projectId);
+      if(!p) return;
+      document.getElementById('console-title-text').innerText = p.projectId;
+      document.getElementById('c-meta-name').innerText = p.clientName;
+      document.getElementById('c-meta-loc').innerText = p.siteLocation;
+      document.getElementById('c-meta-phone').innerText = p.clientPhone || "None Provided";
+      document.getElementById('c-meta-phone').href = p.clientPhone ? "tel:" + p.clientPhone : "#";
+      document.getElementById('c-meta-notes').value = p.notes || "No standard parameters stored.";
+      switchConsoleSegment('profile');
+      showPage('project-console');
+    }
+
+    function switchConsoleSegment(segKey) {
+      document.querySelectorAll('.console-tab-window').forEach(w => { w.classList.remove('active-view'); w.classList.add('page-view'); });
+      document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('console-seg-' + segKey).classList.remove('page-view');
+      document.getElementById('console-seg-' + segKey).classList.add('active-view');
+      document.getElementById('seg-btn-' + segKey).classList.add('active');
+      if (segKey === 'takeoff') loadTakeOffListings();
+      if (segKey === 'progress') loadProgressTimelineFeed();
+      if (segKey === 'workorders') loadWorkOrdersListings();
+    }
+
+    function loadTakeOffListings() {
+      const container = document.getElementById('console-takeoff-list');
+      container.innerHTML = `<p style="text-align:center; padding:15px; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Reading items...</p>`;
+      callApi('getTakeOffItems', {}).then(items => {
+        cache.takeoffs = items || [];
+        const projectItems = cache.takeoffs.filter(i => i.projectId === currentSelectedProjectId);
+        if(projectItems.length === 0) { container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">Survey framework blank.</p>`; return; }
+        container.innerHTML = projectItems.map(i => `
+          <div class="card" onclick="openModal('takeoff_item', cache.takeoffs.find(t=>t.itemId==='${i.itemId}'))" style="background:#fff; border-color:#000; cursor:pointer;">
+            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:6px;">
+              <div>
+                <span style="font-size:11px; font-weight:800; background:var(--primary); color:#fff; padding:2px 6px; border-radius:4px; text-transform:uppercase;">${i.tradeCategory}</span>
+                <h4 style="font-size:18px; font-weight:800; margin-top:4px;">${i.roomArea}</h4>
+              </div>
+              <strong style="font-size:22px; color:var(--success);">${i.quantity} <span style="font-size:14px;">${i.unit}</span></strong>
+            </div>
+            <p style="font-size:15px; font-weight:600; color:#000;">${i.description}</p>
+            ${i.scopeNotes ? `<div style="font-size:13px; color:var(--muted); font-style:italic; margin-top:6px; background:var(--card); padding:6px; border-radius:6px;">Rem: ${i.scopeNotes}</div>` : ''}
+            ${i.beforePhotoUrl ? `<img src="${getDirectImageUrl(i.beforePhotoUrl.split(',')[0])}" style="width:100%; height:140px; object-fit:cover; border-radius:10px; margin-top:10px; border:1px solid #000;">` : ''}
+          </div>
+        `).join('');
+      });
+    }
+
+    function loadProgressTimelineFeed() {
+      const container = document.getElementById('console-progress-feed');
+      container.innerHTML = `<p style="text-align:center; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Mapping history logs...</p>`;
+      callApi('getProgressLogs', {}).then(logs => {
+        cache.progressLogs = logs || [];
+        const projectLogs = cache.progressLogs.filter(l => l.projectId === currentSelectedProjectId);
+        if(projectLogs.length === 0) { container.innerHTML = `<p style="color:var(--muted); font-style:italic; padding-left:10px; font-size:14px;">No updates logged.</p>`; return; }
+        container.innerHTML = projectLogs.map(l => `
+          <div class="timeline-node">
+            <div style="font-size:12px; font-weight:800; color:var(--muted);">${l.dateRecorded}</div>
+            <div style="background:var(--card); padding:14px; border-radius:14px; border:1px solid var(--border); margin-top:5px;">
+              <div style="display:flex; justify-content:space-between; font-weight:800; font-size:14px; margin-bottom:5px;">
+                <span style="color:var(--primary); text-transform:uppercase;">[${l.tradeCategory}]</span>
+                <span style="color:var(--success);">${l.completionPercentage}% Complete</span>
+              </div>
+              <p style="font-size:15px; font-weight:600; color:#000;">${l.commentNarrative}</p>
+              ${l.progressPhotoUrl ? `<img src="${getDirectImageUrl(l.progressPhotoUrl.split(',')[0])}" style="width:100%; height:150px; object-fit:cover; border-radius:10px; margin-top:8px; border:1px solid #000;">` : ''}
+            </div>
+          </div>
+        `).join('');
+      });
+    }
+
+    function loadWorkOrdersListings() {
+      const container = document.getElementById('console-workorders-list');
+      container.innerHTML = `<p style="text-align:center; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Querying order registry...</p>`;
+      callApi('getVendors', {}).then(vendors => {
+        cache.vendors = vendors || [];
+        callApi('getWorkOrders', {}).then(orders => {
+          cache.workorders = orders || [];
+          const projectOrders = cache.workorders.filter(w => w.projectId === currentSelectedProjectId);
+          if(projectOrders.length === 0) { container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">No work allocations issued.</p>`; return; }
+          container.innerHTML = projectOrders.map(w => {
+            const subName = cache.vendors.find(v => String(v.vendorId || v.rowId) === String(w.vendorId))?.company || "General Assignee";
+            return `
+              <div class="card" onclick="openModal('workorder', cache.workorders.find(t=>t.workOrderId==='${w.workOrderId}'))" style="background:#fff; border-color:#000; cursor:pointer;">
+                <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:4px;">
+                  <div>
+                    <strong style="font-size:18px;">${subName}</strong><br>
+                    <small style="color:var(--muted); font-weight:700;">Ref: ${w.workOrderId} | Issued: ${w.dateCreated}</small>
+                  </div>
+                  <span style="font-size:11px; font-weight:900; background:${w.status === 'Completed' ? 'var(--success)' : '#fd7e14'}; color:#fff; padding:3px 8px; border-radius:4px; text-transform:uppercase;">${w.status}</span>
+                </div>
+                <p style="font-size:15px; font-weight:600; margin-top:6px; color:#000;">${w.description}</p>
+                <div style="font-size:16px; font-weight:900; margin-top:8px; color:var(--primary);">Tariff Valuation: ₦${Number(w.amount).toLocaleString()}</div>
+              </div>
+            `;
+          }).join('');
+        });
+      });
+    }
+
+    function triggerEditProjectProfile() { openModal('project', cache.projects.find(item => item.projectId === currentSelectedProjectId)); }
+    function openVendorModalById(id) { openModal('vendor', cache.vendors.find(v => String(v.vendorId || v.rowId).trim() === String(id).trim())); }
+
+    // --- PHOTO / BASE64 BYPASS UI ENGINE ---
+    function populateModalInlineImageGalleryPreviews(renderBoxId) {
+      const box = document.getElementById(renderBoxId); if(!box) return;
+      if(currentModalFiles.length === 0) { box.innerHTML = ''; box.style.display = 'none'; return; }
+      box.style.display = 'flex';
+      box.innerHTML = currentModalFiles.map((url, idx) => {
+        const isPdf = url.toLowerCase().includes('pdf');
+        const imgSource = url.startsWith('data:') ? url : getDirectImageUrl(url);
+        let content = isPdf 
+          ? `<div style="width:100%; height:100%; border:2px solid var(--text); border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center;"><i class="fas fa-file-pdf" style="font-size:24px; color:var(--danger);"></i></div>`
+          : `<img src="${imgSource}" style="width:100%; height:100%; object-fit:cover; border:2px solid var(--text); border-radius:6px; margin:0;">`;
+        return `
+          <div style="position: relative; width: 60px; height: 60px; flex-shrink: 0;">
+            ${content}
+            <div onclick="removeAttachmentByIndex(${idx}, '${renderBoxId}')" style="position: absolute; top: -6px; right: -6px; background: var(--danger); color: white; border: 2px solid white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3); z-index: 10;">&times;</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function removeAttachmentByIndex(index, renderBoxId) { currentModalFiles.splice(index, 1); populateModalInlineImageGalleryPreviews(renderBoxId); }
+    function clearVendorAvatarPhoto() { currentAvatarPhoto = ""; document.getElementById('passport_frame_view').src = 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2250%22 height=%2250%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%236c757d%22/></svg>'; document.getElementById('v_pass_remove_btn').style.display = 'none'; }
+
+    function processIncomingMultiAttachments(filesList, previewTargetId) {
+      if(!filesList || filesList.length === 0) return;
+      Array.from(filesList).forEach(file => {
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        if (isPdf && file.size > 500 * 1024) { alert(`Limit Error: "${file.name}" exceeds 500KB constraint.`); return; }
+        
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          let payload = evt.target.result;
+          if (!isPdf) payload = await compressImageToTargetLimit(evt.target.result, 190000);
+          
+          currentModalFiles.push(payload); 
+          populateModalInlineImageGalleryPreviews(previewTargetId);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function generateFrontendPreviewId(type) {
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const prefix = type === 'project' ? `PRJ/${yy}/` : `WKO/${yy}/`;
+      const dataset = type === 'project' ? cache.projects : cache.workorders;
+      const idKey = type === 'project' ? 'projectId' : 'workOrderId';
+      let maxNum = 0;
+      (dataset || []).forEach(item => {
+        const currentId = String(item[idKey] || '').trim();
+        if (currentId.indexOf(prefix) === 0) {
+          const numPart = parseInt(currentId.substring(prefix.length), 10);
+          if (!isNaN(numPart) && numPart > maxNum) { maxNum = numPart; }
+        }
+      });
+      return prefix + String(maxNum + 1).padStart(3, '0');
+    }
+
+    function openModal(type, editData = null) {
+      const body = document.getElementById('modalBody'); const submit = document.getElementById('modalSubmit');
+      const title = document.getElementById('modalTitle'); const overlay = document.getElementById('modalOverlay');
+      const isEdit = !!editData; overlay.style.display = 'flex'; body.innerHTML = ''; submit.disabled = false; submit.innerText = "Save";
+      
+      const largeInput = 'style="font-size: 20px; padding: 12px; margin-bottom: 5px;"';
+      const labelStyle = 'style="font-size: 16px; color: var(--text); font-weight:800; display: block; margin-top: 10px; margin-bottom: 4px;"';
+      currentModalFiles = []; currentAvatarPhoto = "";
+    
+      if (type === 'project') {
+        const uniqueId = isEdit ? editData.projectId : generateFrontendPreviewId('project');
+        title.innerText = isEdit ? "Modify Project" : "New Project";
+        body.innerHTML = `
+          <label ${labelStyle}>Project ID</label><input value="${uniqueId}" disabled style="font-size: 20px; padding: 12px; margin-bottom: 5px; background: var(--card-light); font-weight: 800; color: #000;">
+          <label ${labelStyle}>Client Name</label><input id="p_client" value="${isEdit?editData.clientName:''}" ${largeInput}>
+          <label ${labelStyle}>Site Location</label><input id="p_loc" value="${isEdit?editData.siteLocation:''}" ${largeInput}>
+          <label ${labelStyle}>Client Phone</label><input id="p_phone" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" placeholder="Blank or 11 Digits" value="${isEdit?editData.clientPhone:''}" ${largeInput}>
+          <label ${labelStyle}>Client Email</label><input id="p_email" type="email" value="${isEdit?editData.clientEmail:''}" ${largeInput}>
+          <label ${labelStyle}>Project Status</label>
+          <select id="p_status" ${largeInput}>
+            <option value="Active" ${isEdit&&editData.projectStatus==='Active'?'selected':''}>Active</option>
+            <option value="In Planning" ${isEdit&&editData.projectStatus==='In Planning'?'selected':''}>In Planning</option>
+            <option value="Handed Over" ${isEdit&&editData.projectStatus==='Handed Over'?'selected':''}>Handed Over</option>
+            <option value="Declined" ${isEdit&&editData.projectStatus==='Declined'?'selected':''}>Declined</option>
+          </select>
+          <label ${labelStyle}>Project Notes</label><textarea id="p_notes" rows="2" ${largeInput}>${isEdit?editData.notes:''}</textarea>
+        `;
+        submit.onclick = () => {
+          const phoneInput = document.getElementById('p_phone').value.trim();
+          if (phoneInput !== "" && !/^[0-9]{11}$/.test(phoneInput)) { alert("Phone must be exactly 11 numeric digits."); return; }
+          submit.disabled = true; submit.innerText = "Saving...";
+          const payload = { projectId: uniqueId, clientName: document.getElementById('p_client').value, siteLocation: document.getElementById('p_loc').value, clientPhone: String(phoneInput), clientEmail: document.getElementById('p_email').value, projectStatus: document.getElementById('p_status').value, notes: document.getElementById('p_notes').value };
+          callApi(isEdit?'updateProject':'saveProject', payload).then(() => { closeModal(); refreshMasterDashboard(); if(isEdit) loadProjectConsoleHub(uniqueId); });
+        };
+      }
+      else if (type === 'takeoff_item') {
+        const uniqueId = isEdit ? editData.itemId : "JOB-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = isEdit ? "Modify Take-Off" : "Log Measure";
+        if (isEdit && editData.beforePhotoUrl) currentModalFiles = editData.beforePhotoUrl.split(',').map(s=>s.trim()).filter(Boolean);
+        
+        body.innerHTML = `
+          <label ${labelStyle}>Room Area</label><input id="t_area" placeholder="e.g. Kitchen" value="${isEdit ? (editData.roomArea || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Trade Category</label><input id="t_cat" placeholder="e.g. Tiling" value="${isEdit ? (editData.tradeCategory || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Scope Description</label><input id="t_desc" placeholder="e.g. Wall tiles" value="${isEdit ? (editData.description || '') : ''}" ${largeInput}>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <div><label ${labelStyle}>Quantity Value</label><input id="t_qty" type="number" step="0.01" value="${isEdit ? (editData.quantity || '') : ''}" ${largeInput}></div>
+            <div>
+              <label ${labelStyle}>Unit Label</label>
+              <select id="t_unit" ${largeInput}>
+                <option value="sqm" ${isEdit && editData.unit === 'sqm' ? 'selected' : ''}>sqm</option>
+                <option value="cu.m" ${isEdit && editData.unit === 'cu.m' ? 'selected' : ''}>cu.m</option>
+                <option value="m" ${isEdit && editData.unit === 'm' ? 'selected' : ''}>m</option>
+                <option value="pcs" ${isEdit && editData.unit === 'pcs' ? 'selected' : ''}>pcs</option>
+              </select>
+            </div>
+          </div>
+          <label ${labelStyle}>Inspector Remarks</label><textarea id="t_notes" rows="2" ${largeInput}>${isEdit ? (editData.scopeNotes || '') : ''}</textarea>
+          
+          <label ${labelStyle}>Form Attachments</label>
+          <div id="takeoffAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="t_photo" accept="image/*,application/pdf" style="display:none" multiple></label>
+          
+          ${isEdit ? `<button class="action-btn" id="t_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Record</button>` : ''}
+        `;
+        if(currentModalFiles.length > 0) populateModalInlineImageGalleryPreviews('takeoffAttachmentsPreviews');
+        document.getElementById('t_photo').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'takeoffAttachmentsPreviews'); };
+        
+        if(isEdit) { document.getElementById('t_delete_btn').onclick = () => { if(confirm("Confirm deletion?")) { document.getElementById('t_delete_btn').disabled = true; submit.disabled = true; callApi('deleteTakeOffItem', { itemId: uniqueId }).then(() => { closeModal(); loadTakeOffListings(); }); } }; }
+        
+        submit.onclick = async () => {
+          submit.disabled = true; submit.innerText = "Acquiring GPS...";
+          const gps = await getGPSLocation();
+          submit.innerText = "Saving...";
+          
+          const finalNotes = document.getElementById('t_notes').value + (gps !== "GPS Unavailable" ? `\n\n[📍 Verified @ ${gps}]` : "");
+          const payload = { itemId: uniqueId, projectId: currentSelectedProjectId, roomArea: document.getElementById('t_area').value, tradeCategory: document.getElementById('t_cat').value, description: document.getElementById('t_desc').value, quantity: document.getElementById('t_qty').value, unit: document.getElementById('t_unit').value, beforePhotoUrl: currentModalFiles.join('|||'), scopeNotes: finalNotes };
+          callApi(isEdit ? 'updateTakeOffItem' : 'saveTakeOffItem', payload).then(() => { closeModal(); loadTakeOffListings(); });
+        };
+      }
+      else if (type === 'progress_entry') {
+        const uniqueId = "LOG-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = "Log Progress";
+        body.innerHTML = `
+          <label ${labelStyle}>Trade Sector</label><input id="l_cat" placeholder="e.g. Painting" ${largeInput}>
+          <label ${labelStyle}>Completion Progress</label><select id="l_pct" ${largeInput}><option value="10">10%</option><option value="35">35%</option><option value="75">75%</option><option value="100">100%</option></select>
+          <label ${labelStyle}>Status Comments</label><textarea id="l_comm" rows="3" placeholder="Field narrative summary logs..." ${largeInput}></textarea>
+          
+          <label ${labelStyle}>Form Attachments</label>
+          <div id="progressAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="l_photo" accept="image/*,application/pdf" style="display:none" multiple></label>
+        `;
+        document.getElementById('l_photo').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'progressAttachmentsPreviews'); };
+        
+        submit.onclick = async () => {
+          submit.disabled = true; submit.innerText = "Acquiring GPS...";
+          const gps = await getGPSLocation();
+          submit.innerText = "Saving...";
+
+          const finalNarrative = document.getElementById('l_comm').value + (gps !== "GPS Unavailable" ? `\n\n[📍 Logged @ ${gps}]` : "");
+          const payload = { logId: uniqueId, projectId: currentSelectedProjectId, tradeCategory: document.getElementById('l_cat').value, completionPercentage: document.getElementById('l_pct').value, commentNarrative: finalNarrative, progressPhotoUrl: currentModalFiles.join('|||') };
+          callApi('saveProgressLog', payload).then(() => { closeModal(); loadProgressTimelineFeed(); });
+        };
+      }
+      else if (type === 'vendor') {
+        const uniqueId = isEdit ? (editData.vendorId || editData.rowId) : "VND-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        title.innerText = isEdit ? "Modify Vendor" : "Add Vendor";
+        currentAvatarPhoto = isEdit ? editData.passport : "";
+        if (isEdit && editData.attachments) currentModalFiles = editData.attachments.split(',').map(s=>s.trim()).filter(Boolean);
+
+        body.innerHTML = `
+          <div class="passport-frame-container" style="position:relative;">
+            <img id="passport_frame_view" src="${currentAvatarPhoto ? (currentAvatarPhoto.startsWith('data:')?currentAvatarPhoto:getDirectImageUrl(currentAvatarPhoto)) : 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2250%22 height=%2250%22><path d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22 fill=%22%236c757d%22/></svg>'}" style="width:100%; height:100%; object-fit:cover;">
+            <label style="position:absolute; bottom:2px; right:2px; background:var(--primary); color:#fff; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; cursor:pointer;">
+              <i class="fas fa-camera" style="font-size:12px;"></i>
+              <input type="file" id="v_pass_uploader" accept="image/*" capture="environment" style="display:none">
+            </label>
+            <div id="v_pass_remove_btn" onclick="clearVendorAvatarPhoto()" style="position:absolute; top:2px; right:2px; background:var(--danger); color:white; border:2px solid white; border-radius:50%; width:24px; height:24px; display:${currentAvatarPhoto?'flex':'none'}; align-items:center; justify-content:center; font-size:12px; font-weight:900; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.2); z-index:15;">&times;</div>
+          </div>
+          <label ${labelStyle}>Company Name</label><input id="v_comp" value="${isEdit ? (editData.company || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Trade Category</label><input id="v_trade" value="${isEdit ? (editData.trade || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Contact Person</label><input id="v_contact" value="${isEdit ? (editData.contactName || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Phone 1</label><input id="v_phone1" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" placeholder="Blank or 11 Digits" value="${isEdit ? (editData.phone1 || editData.phone || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Phone 2</label><input id="v_phone2" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" placeholder="Blank or 11 Digits" value="${isEdit ? (editData.phone2 || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Email Address</label><input id="v_email" type="email" value="${isEdit ? (editData.email || '') : ''}" ${largeInput}>
+          <label ${labelStyle}>Form Attachments</label>
+          <div id="vendorAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="vendor_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
+          ${isEdit ? `<button class="action-btn" id="v_delete_btn" style="background:var(--danger); margin-top:20px; font-size:16px; padding:12px;"><i class="fas fa-trash-alt"></i> Delete Vendor</button>` : ''}
+        `;
+
+        if(currentModalFiles.length > 0) populateModalInlineImageGalleryPreviews('vendorAttachmentsPreviews');
+        
+        document.getElementById('v_pass_uploader').onchange = (e) => {
+          const file = e.target.files[0]; if(!file) return;
+          const r = new FileReader(); r.onload = async (evt) => {
+            const comp = await compressImageToTargetLimit(evt.target.result, 190000);
+            currentAvatarPhoto = comp; 
+            document.getElementById('passport_frame_view').src = comp;
+            document.getElementById('v_pass_remove_btn').style.display = 'flex';
+          }; r.readAsDataURL(file);
+        };
+        document.getElementById('vendor_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'vendorAttachmentsPreviews'); };
+
+        if(isEdit) { document.getElementById('v_delete_btn').onclick = () => { if(confirm("Confirm deletion?")) { document.getElementById('v_delete_btn').disabled = true; submit.disabled = true; callApi('deleteVendor', { vendorId: uniqueId }).then(() => { closeModal(); refreshVendorsListView(); }); } }; }
+
+        submit.onclick = () => {
+          const p1 = document.getElementById('v_phone1').value.trim(); const p2 = document.getElementById('v_phone2').value.trim();
+          if (p1 !== "" && !/^[0-9]{11}$/.test(p1)) { alert("Phone 1 must be 11 numeric digits."); return; }
+          if (p2 !== "" && !/^[0-9]{11}$/.test(p2)) { alert("Phone 2 must be 11 numeric digits."); return; }
+          submit.disabled = true; submit.innerText = "Saving...";
+          const payload = { vendorId: uniqueId, company: document.getElementById('v_comp').value, trade: document.getElementById('v_trade').value, contactName: document.getElementById('v_contact').value, phone1: String(p1), phone2: String(p2), email: document.getElementById('v_email').value, passport: String(currentAvatarPhoto), attachments: String(currentModalFiles.join('|||')), archived: "No" };
+          callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => { closeModal(); refreshVendorsListView(); });
+        };
+      }
+      else if (type === 'workorder') {
+        const uniqueId = isEdit ? editData.workOrderId : generateFrontendPreviewId('workorder');
+        title.innerText = isEdit ? "Modify Order" : "Generate Order";
+        if (isEdit && editData.attachments) currentModalFiles = editData.attachments.split(',').map(s=>s.trim()).filter(Boolean);
+
+        body.innerHTML = `
+          <label ${labelStyle}>Order ID</label><input value="${uniqueId}" disabled style="font-size: 20px; padding: 12px; margin-bottom: 5px; background: var(--card-light); font-weight: 800; color: #000;">
+          <label ${labelStyle}>Select Subcontractor</label><select id="w_vendor" ${largeInput}></select>
+          <label ${labelStyle}>Task Scope</label><textarea id="w_desc" rows="3" placeholder="Operational deliverables..." ${largeInput}>${isEdit ? editData.description : ''}</textarea>
+          <label ${labelStyle}>Contract Amount</label><input id="w_amount" type="number" value="${isEdit ? editData.amount : ''}" ${largeInput}>
+          <label ${labelStyle}>Order Status</label>
+          <select id="w_status" ${largeInput}>
+            <option value="Pending Clearance" ${isEdit && editData.status === 'Pending Clearance' ? 'selected' : ''}>Pending Clearance</option>
+            <option value="Active Field Run" ${isEdit && editData.status === 'Active Field Run' ? 'selected' : ''}>Active Field Run</option>
+            <option value="Completed" ${isEdit && editData.status === 'Completed' ? 'selected' : ''}>Completed & Verified</option>
+          </select>
+          <label ${labelStyle}>Form Attachments</label>
+          <div id="woAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
+          <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="wo_multi_uploader" accept="image/*,application/pdf" multiple style="display:none"></label>
+        `;
+
+        const vSel = document.getElementById('w_vendor');
+        vSel.innerHTML = (cache.vendors || []).map(v => `<option value="${v.vendorId || v.rowId}" ${isEdit && String(v.vendorId || v.rowId) === String(editData.vendorId) ? 'selected' : ''}>${v.company} [${v.trade}]</option>`).join('') || '<option value="">-- No Subcontractors --</option>';
+
+        if(currentModalFiles.length > 0) populateModalInlineImageGalleryPreviews('woAttachmentsPreviews');
+        document.getElementById('wo_multi_uploader').onchange = (e) => { processIncomingMultiAttachments(e.target.files, 'woAttachmentsPreviews'); };
+
+        submit.onclick = () => {
+          if(!vSel.value) { alert("Contract handler assigned entity missing."); return; }
+          submit.disabled = true; submit.innerText = "Saving...";
+          const payload = { workOrderId: uniqueId, projectId: currentSelectedProjectId, vendorId: vSel.value, description: document.getElementById('w_desc').value, amount: document.getElementById('w_amount').value, status: document.getElementById('w_status').value, attachments: currentModalFiles.join('|||') };
+          callApi(isEdit ? 'updateWorkOrder' : 'saveWorkOrder', payload).then(() => { closeModal(); loadWorkOrdersListings(); });
+        };
+      }
+    }
+
+    // --- EMERGENCY JSON BLOB EXTRACTOR ---
+    async function exportEmergencyOfflineBackup() {
+      try {
+        const queue = await getQueuedRequests();
+        if (queue.length === 0) { alert("Sync pipeline safe. No un-synced data found in the local database."); return; }
+        const rawJson = JSON.stringify(queue, null, 2);
+        
+        const body = document.getElementById('modalBody'); const submit = document.getElementById('modalSubmit'); const title = document.getElementById('modalTitle');
+        title.innerText = "Emergency Data Extract";
+        body.innerHTML = `
+          <p style="font-size:13px; font-weight:700; color:var(--danger); margin-bottom:10px;">Copy the raw text, or download the JSON backup file.</p>
+          <textarea readonly style="width:100%; height:250px; font-family:monospace; font-size:11px; padding:10px; border:2px solid #000; border-radius:8px; background:#fff;">${rawJson}</textarea>
+          <button class="action-btn" id="blob-download-btn" style="background:var(--success); margin-top:15px; font-size:16px; padding:12px;"><i class="fas fa-download"></i> Save .JSON File</button>
+        `;
+        document.getElementById('modalOverlay').style.display = 'flex';
+        submit.innerText = "Acknowledge"; submit.onclick = () => { closeModal(); };
+
+        document.getElementById('blob-download-btn').onclick = () => {
+          const blob = new Blob([rawJson], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = "FieldScan_Recovery_" + new Date().getTime() + ".json";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        };
+      } catch (err) { alert("Database access failure: " + err.message); }
+    }
+
+    function compressImageToTargetLimit(base64Str, targetMaxBytes) {
+      return new Promise((resolve) => {
+        const img = new Image(); img.src = base64Str; img.onload = () => {
+          const canvas = document.createElement('canvas'); let w = img.width; let h = img.height;
+          if (w > h) { if (w > 1000) { h *= 1000 / w; w = 1000; } } else { if (h > 1000) { w *= 1000 / h; h = 1000; } }
+          canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+          let q = 0.8; let res = canvas.toDataURL('image/jpeg', q);
+          while (res.length > targetMaxBytes && q > 0.15) { q -= 0.1; res = canvas.toDataURL('image/jpeg', q); }
+          resolve(res);
+        };
+      });
+    }
+
+    function getDirectImageUrl(url) { if (!url || !url.includes('drive.google.com')) return url; const id = url.split('/d/')[1]?.split('/')[0] || url.split('id=')[1]?.split('&')[0]; return `https://drive.google.com/thumbnail?id=${id}&sz=w800`; }
+    function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+    
+    function showPage(p) {
+      document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active-view'));
+      const target = document.getElementById('view-' + p);
+      if (target) { target.classList.add('active-view'); window.scrollTo(0,0); }
+      if (p === 'dashboard') refreshMasterDashboard();
+      if (p === 'vendors') refreshVendorsListView();
+      if (p === 'reports') initReportsConsoleEngine();
+    }
+
+    function initReportsConsoleEngine() {
+      const pipeline = [ callApi('getProjects', {}), callApi('getTakeOffItems', {}), callApi('getProgressLogs', {}), callApi('getWorkOrders', {}), callApi('getVendors', {}) ];
+      Promise.all(pipeline).then(([p, t, l, w, v]) => {
+        cache.projects = p || []; cache.takeoffs = t || []; cache.progressLogs = l || []; cache.workorders = w || []; cache.vendors = v || [];
+        const pSel = document.getElementById('rep-project-sel');
+        pSel.innerHTML = '<option value="">-- Choose Project --</option>' + cache.projects.map(item => `<option value="${item.projectId}">${item.clientName} [Ref: ${item.projectId}]</option>`).join('');
+        document.getElementById('rep-template-sel').innerHTML = "<option value=''>-- Configure Filters --</option>";
+        document.getElementById('report-onscreen-preview-card').style.display = "none";
+      });
+    }
+
+    function handleReportOptionsPopulation() {
+      const pId = document.getElementById('rep-project-sel').value;
+      const tSel = document.getElementById('rep-template-sel');
+      if(!pId) { tSel.innerHTML = "<option value=''>-- Choose Valid Project Trace Entry Rows --</option>"; return; }
+      tSel.innerHTML = `
+        <option value="">-- Choose Target Document Matrix Setup --</option>
+        <option value="survey_complete">Comprehensive Quantity Take-Off Sheet Manifest</option>
+        <option value="progress_timeline">Chronological Construction Progress Audit Timeline</option>
+        <option value="scope_completion">Project Scope & Completion Report Portfolio</option>
+        <option value="master_dossier">The Complete Executive Portfolio (All Records Bundle)</option>
+      `;
+    }
+
+    function compileFieldReport() {
+      const pId = document.getElementById('rep-project-sel').value;
+      const layout = document.getElementById('rep-template-sel').value;
+      if (!pId || !layout) { alert("Please allocate accurate selection profile configurations."); return; }
+      
+      const projectItem = cache.projects.find(item => item.projectId === pId);
+      const logoUrl = "YOUR_LOGO_URL_HERE"; 
+
+      let headerStr = `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 3px solid #000000; margin-bottom: 20px; gap: 15px;">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <img src="${logoUrl}" alt="Logo" style="height: 65px; max-width: 160px; object-fit: contain; font-size: 10px;" onerror="this.style.display='none';">
+            <div style="text-align: left;">
+              <h2 style="font-size: 22px; font-weight: 800; letter-spacing: 0.5px; margin: 0; line-height: 1.2; color: #000000;">FIELDSCAN PRO OPERATIONS COMPLIANCE SYSTEM</h2>
+              <p style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-top: 4px; margin-bottom: 0; color: var(--muted);">Official Scope Verification & Progress Timeline Documentation</p>
+            </div>
+          </div>
+          <div style="text-align: right; font-size: 12px; font-weight: 800; white-space: nowrap; padding-left: 15px;">
+            RUN SYNC DATE:<br><span style="font-family: monospace; font-size: 13px;">${new Date().toLocaleDateString()}</span>
+          </div>
+        </div>
+        <div style="background:#f8f9fa; border:1px solid #000; padding:12px; border-radius:10px; font-size:14px; font-weight:700; margin-bottom:20px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div>CLIENT ENTITY Name: <span style="font-weight:500;">${projectItem.clientName}</span><br>JOBSITE COORDINATE: <span style="font-weight:500;">${projectItem.siteLocation}</span></div>
+          <div style="text-align:right;">PROJECT INDEX TOKEN: <span style="font-family:monospace;">${projectItem.projectId}</span><br>TRACK STATE STATUS: <span style="font-weight:800; text-transform:uppercase;">[${projectItem.projectStatus}]</span></div>
+        </div>
+      `;
+      
+      let contentHtml = "";
+      const filteredTakeoffs = cache.takeoffs.filter(item => item.projectId === pId);
+      const filteredProgress = cache.progressLogs.filter(item => item.projectId === pId);
+      const filteredOrders = cache.workorders.filter(item => item.projectId === pId);
+
+      if (layout === "survey_complete" || layout === "master_dossier") {
+        contentHtml += `
+          <h3 style="font-size:16px; margin-bottom:8px; text-transform:uppercase; border-bottom:1px solid #000; padding-bottom:4px;">I. Quantity Take-Off & Structural Dimensions Matrix</h3>
+          <table class="print-table">
+            <thead><tr><th>Structural Area Node</th><th>Specialized Trade</th><th>Scope Task Specification Description</th><th>Measured Dimension</th></tr></thead>
+            <tbody>
+              ${filteredTakeoffs.map(t => `<tr><td><strong>${t.roomArea}</strong></td><td>${t.tradeCategory}</td><td>${t.description}${t.scopeNotes? `<br><small style="color:#555; font-style:italic;">Note: ${t.scopeNotes}</small>`:''}</td><td><strong>${t.quantity} ${t.unit}</strong></td></tr>`).join('') || '<tr><td colspan="4">No survey items registered inside structural parameters.</td></tr>'}
+            </tbody>
+          </table>
+        `;
+      }
+
+      if (layout === "progress_timeline" || layout === "master_dossier") {
+        contentHtml += `
+          <h3 style="font-size:16px; margin-top:25px; margin-bottom:8px; text-transform:uppercase; border-bottom:1px solid #000; padding-bottom:4px;">${layout === 'master_dossier'?'II':'I'}. Project Field Execution Progress Timeline</h3>
+          <div style="position:relative; padding-left:15px; border-left:2px solid #000; margin-top:10px; margin-left:5px;">
+            ${filteredProgress.map(l => `
+              <div style="margin-bottom:18px; position:relative;">
+                <div style="font-size:11px; font-weight:800; color:#555;">${l.dateRecorded} | TRADE FIELD: <span style="text-transform:uppercase; color:var(--primary);">${l.tradeCategory}</span></div>
+                <div style="font-size:14px; font-weight:700; color:#000; margin-top:2px;">
+                  Metrics Clearance State Level: <span style="color:var(--success); font-weight:800;">${l.completionPercentage}% Done</span>
+                </div>
+                <p style="font-size:13px; font-weight:500; color:#333; margin-top:3px; font-style:italic;">"${l.commentNarrative}"</p>
+              </div>
+            `).join('') || '<p style="font-style:italic; font-size:13px;">No history rows processed yet.</p>'}
+          </div>
+        `;
+      }
+
+      if (layout === "scope_completion") {
+        const latestPercentages = {};
+        filteredProgress.forEach(l => {
+          if (!latestPercentages[l.tradeCategory] || parseInt(l.completionPercentage) > parseInt(latestPercentages[l.tradeCategory])) {
+            latestPercentages[l.tradeCategory] = parseInt(l.completionPercentage);
+          }
+        });
+        
+        const overallTradeCount = Object.keys(latestPercentages).length;
+        const aggregateSum = Object.values(latestPercentages).reduce((a, b) => a + b, 0);
+        const calculatedTotalPct = overallTradeCount > 0 ? Math.round(aggregateSum / overallTradeCount) : 0;
+
+        contentHtml += `
+          <h3 style="font-size:16px; margin-bottom:12px; text-transform:uppercase; border-bottom:1px solid #000; padding-bottom:4px;">Project Scope Fulfillment & Completion Summary</h3>
+          <div style="display:grid; grid-template-columns:1fr 2fr; gap:15px; margin-bottom:20px; align-items:center;">
+            <div style="border:3px solid #000; text-align:center; padding:20px; border-radius:12px; background:#f8f9fa;">
+              <span style="font-size:36px; font-weight:900; color:var(--success);">${calculatedTotalPct}%</span><br>
+              <small style="font-weight:800; font-size:11px; color:var(--muted); text-transform:uppercase;">Overall Progress Score</small>
+            </div>
+            <div style="font-size:14px; font-weight:600;">
+              Total Quantified Scope Branches: <span style="font-weight:800; color:var(--primary);">${filteredTakeoffs.length} Survey Elements</span><br>
+              Total Chronological Milestones Logged: <span style="font-weight:800;">${filteredProgress.length} Entries</span><br>
+              Contractual Subcontract Work Orders: <span style="font-weight:800;">${filteredOrders.length} Packages</span>
+            </div>
+          </div>
+
+          <h4 style="font-size:14px; text-transform:uppercase; margin-bottom:6px;">Section 1: Active Trade Milestones Metrics Status Matrix</h4>
+          <table class="print-table" style="margin-bottom:25px;">
+            <thead><tr><th>Allocated specialized Trade Sector</th><th>Verified Structural Completion Status</th></tr></thead>
+            <tbody>
+              ${Object.keys(latestPercentages).map(t => `<tr><td><strong>${t.toUpperCase()}</strong></td><td><strong>${latestPercentages[t]}% Complete</strong></td></tr>`).join('') || '<tr><td colspan="2">No milestone percentages have been mapped.</td></tr>'}
+            </tbody>
+          </table>
+
+          <h4 style="font-size:14px; text-transform:uppercase; margin-bottom:6px;">Section 2: Dispatched Subcontractor Expenditure Commitments</h4>
+          <table class="print-table">
+            <thead><tr><th>Assigned Corporate Handler</th><th>Operational Deliverable Task Scope</th><th>Budget Valuation</th><th>Tracking Status</th></tr></thead>
+            <tbody>
+              ${filteredOrders.map(w => {
+                const name = cache.vendors.find(v => String(v.vendorId || v.rowId) === String(w.vendorId))?.company || "Assigned Contractor Entity";
+                return `<tr><td><strong>${name}</strong></td><td>${w.description}</td><td>₦${Number(w.amount).toLocaleString()}</td><td>[${w.status.toUpperCase()}]</td></tr>`;
+              }).join('') || '<tr><td colspan="4">No subcontractor liabilities have been mapped.</td></tr>'}
+            </tbody>
+          </table>
+          
+          <div class="page-break" style="margin-top:50px; display:grid; grid-template-columns:1fr 1fr; gap:40px; text-align:center; font-size:12px; font-weight:800;">
+            <div><div style="border-bottom:1px solid #000; margin-bottom:5px; height:35px;"></div>FIELD INSPECTOR AUTHORIZATION</div>
+            <div><div style="border-bottom:1px solid #000; margin-bottom:5px; height:35px;"></div>CLIENT REVIEW / SIGN-OFF CLEARANCE</div>
+          </div>
+        `;
+      }
+      const totalCompiledPackage = headerStr + contentHtml;
+      document.getElementById('report-preview-viewport').innerHTML = totalCompiledPackage;
+      document.getElementById('report-print-container').innerHTML = totalCompiledPackage;
+      document.getElementById('report-onscreen-preview-card').style.display = "block";
+    }
+  </script>
 </body>
 </html>
