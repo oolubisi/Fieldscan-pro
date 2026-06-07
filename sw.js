@@ -1,69 +1,47 @@
-const CACHE_NAME = 'fieldscan-cache-v2';
-
-// 1. ADD CRITICAL ASSETS TO PREVENT OFFLINE UI BREAKAGE
-const urlsToCache = [
-  './',
-  './index.html',
-  './manifest.json',
-  './launchericon-192x192.png',
-  './launchericon-512x512.png',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css'
+const CACHE_NAME = "fieldscan-pro-v1";
+const APP_SHELL = [
+  "./",
+  "./index.html",
+  "./style.css",
+  "./script.js",
+  "./manifest.json"
 ];
 
-self.addEventListener('install', event => {
+self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        return cache.addAll(urlsToCache);
-      })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
   );
-  // 2. FORCE IMMEDIATE ACTIVATION
-  self.skipWaiting(); 
+  self.skipWaiting();
 });
 
-self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
+self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim()) // Take control of open clients immediately
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+    )
   );
+  self.clients.claim();
 });
 
-self.addEventListener('fetch', event => {
-  // 3. THE POST REQUEST TRAP (CRITICAL)
-  // Service Workers CANNOT cache POST requests. Because your app uses POST to 
-  // send data to Google Apps Script, we must tell the SW to ignore them entirely.
-  if (event.request.method !== 'GET') {
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match("./index.html"))
+    );
     return;
   }
 
-  // 4. UPGRADE TO STALE-WHILE-REVALIDATE STRATEGY
   event.respondWith(
-    caches.match(event.request).then(cachedResponse => {
-      
-      const fetchPromise = fetch(event.request).then(networkResponse => {
-        // Only cache valid responses
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      }).catch(err => {
-        console.log("Network fetch failed, relying on cache.", err);
-      });
-
-      // Serve instantly from cache if available, but fetch the network update in the background
-      return cachedResponse || fetchPromise;
+    caches.match(event.request, { ignoreSearch: true }).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
+        if (!response || response.status !== 200) return response;
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      }).catch(() => caches.match(event.request, { ignoreSearch: true }));
     })
   );
 });

@@ -1,22 +1,11 @@
 {
   "name": "FieldScan Pro",
   "short_name": "FieldScan",
-  "description": "Field operations and structural progress management system.",
+  "description": "Construction project inspection, scope, take-off, task, payment, and progress tracker.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0056b3",
-  "icons": [
-    {
-      "src": "./launchericon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "./launchericon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ]
+  "icons": []
 }
