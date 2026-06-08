@@ -24,6 +24,18 @@
       const amount = Number(value || 0);
       return Number.isFinite(amount) ? amount.toLocaleString() : '0';
     }
+
+    function paymentDirectionOf(payment) {
+      return payment.paymentDirection || payment.direction || (payment.payee === 'Client' ? 'Client Receipt' : 'Outgoing Payment');
+    }
+
+    function isClientReceipt(payment) {
+      return paymentDirectionOf(payment) === 'Client Receipt';
+    }
+
+    function isPettyExpense(payment) {
+      return paymentDirectionOf(payment) === 'Small Expense';
+    }
     
     // --- INDEXED DB ENGINE ---
     const DB_NAME = "FieldScanOfflineDB";
@@ -467,25 +479,49 @@
         cache.payments = payments || [];
         const projectPayments = cache.payments.filter(p => p.projectId === currentSelectedProjectId);
         if(projectPayments.length === 0) { container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">No payment records logged.</p>`; return; }
-        const totalPaid = projectPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const totalReceived = projectPayments.filter(isClientReceipt).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const totalExpenses = projectPayments.filter(p => !isClientReceipt(p)).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const smallExpenses = projectPayments.filter(isPettyExpense).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const netBalance = totalReceived - totalExpenses;
         container.innerHTML = `
-          <div class="card" style="background:var(--card); border-color:#000; text-align:center;">
-            <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Total Paid / Recorded</small>
-            <div style="font-size:30px; font-weight:900; color:var(--success);">₦${moneyValue(totalPaid)}</div>
+          <div class="card" style="background:var(--card); border-color:#000;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:center;">
+              <div>
+                <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Client Received</small>
+                <div style="font-size:24px; font-weight:900; color:var(--success);">₦${moneyValue(totalReceived)}</div>
+              </div>
+              <div>
+                <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Total Outgoing</small>
+                <div style="font-size:24px; font-weight:900; color:var(--danger);">₦${moneyValue(totalExpenses)}</div>
+              </div>
+              <div>
+                <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Small Expenses</small>
+                <div style="font-size:20px; font-weight:900;">₦${moneyValue(smallExpenses)}</div>
+              </div>
+              <div>
+                <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Net Balance</small>
+                <div style="font-size:20px; font-weight:900; color:${netBalance >= 0 ? 'var(--success)' : 'var(--danger)'};">₦${moneyValue(netBalance)}</div>
+              </div>
+            </div>
           </div>
-          ${projectPayments.map(p => `
-            <div class="card" onclick="openModal('payment', cache.payments.find(t=>t.paymentId===${escapeAttr(JSON.stringify(p.paymentId || ''))}))" style="background:#fff; border-color:#000; cursor:pointer;">
+          ${projectPayments.map(p => {
+            const direction = paymentDirectionOf(p);
+            const incoming = isClientReceipt(p);
+            return `
+            <div class="card" onclick="openModal('payment', cache.payments.find(t=>t.paymentId===${escapeAttr(JSON.stringify(p.paymentId || ''))}))" style="background:#fff; border-color:#000; border-left:6px solid ${incoming ? 'var(--success)' : 'var(--danger)'}; cursor:pointer;">
               <div style="display:flex; justify-content:space-between; align-items:start; gap:10px;">
                 <div>
                   <strong style="font-size:18px;">${escapeHtml(p.payee || 'Payment')}</strong><br>
-                  <small style="color:var(--muted); font-weight:700;">${escapeHtml(p.paymentDate || '')} | ${escapeHtml(p.paymentMethod || '')}</small>
+                  <small style="color:var(--muted); font-weight:700;">${escapeHtml(p.paymentDate || '')} | ${escapeHtml(p.paymentMethod || '')} | ${escapeHtml(direction)}</small>
                 </div>
                 <span style="font-size:11px; font-weight:900; background:${p.status === 'Cleared' ? 'var(--success)' : '#fd7e14'}; color:#fff; padding:3px 8px; border-radius:4px; text-transform:uppercase;">${escapeHtml(p.status || 'Logged')}</span>
               </div>
-              <div style="font-size:22px; font-weight:900; margin-top:8px; color:var(--primary);">₦${moneyValue(p.amount)}</div>
+              <div style="font-size:22px; font-weight:900; margin-top:8px; color:${incoming ? 'var(--success)' : 'var(--danger)'};">${incoming ? '+' : '-'}₦${moneyValue(p.amount)}</div>
+              ${p.expenseCategory ? `<div style="font-size:12px; font-weight:900; color:var(--muted); text-transform:uppercase; margin-top:4px;">${escapeHtml(p.expenseCategory)}</div>` : ''}
               ${p.notes ? `<p style="font-size:14px; font-weight:600; margin-top:6px; color:#000;">${escapeHtml(p.notes)}</p>` : ''}
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         `;
       });
     }
@@ -777,10 +813,28 @@
 
         body.innerHTML = `
           <label ${labelStyle}>Payment ID</label><input value="${escapeAttr(uniqueId)}" disabled style="font-size: 20px; padding: 12px; margin-bottom: 5px; background: var(--card-light); font-weight: 800; color: #000;">
-          <label ${labelStyle}>Payee / Recipient</label><input id="pay_payee" placeholder="Subcontractor, staff, supplier..." value="${escapeAttr(isEdit ? (editData.payee || '') : '')}" ${largeInput}>
-          <label ${labelStyle}>Linked Work Order / Reference</label><input id="pay_ref" placeholder="Optional work order, invoice or receipt ref" value="${escapeAttr(isEdit ? (editData.referenceId || '') : '')}" ${largeInput}>
+          <label ${labelStyle}>Transaction Type</label>
+          <select id="pay_direction" ${largeInput}>
+            <option value="Client Receipt" ${isEdit && paymentDirectionOf(editData) === 'Client Receipt' ? 'selected' : ''}>Payment Received From Client</option>
+            <option value="Outgoing Payment" ${(!isEdit || paymentDirectionOf(editData) === 'Outgoing Payment') ? 'selected' : ''}>Payment To Subcontractor / Staff / Supplier</option>
+            <option value="Small Expense" ${isEdit && paymentDirectionOf(editData) === 'Small Expense' ? 'selected' : ''}>Small Expense / Petty Cash</option>
+          </select>
+          <label ${labelStyle}>Client / Payee / Recipient</label><input id="pay_payee" placeholder="Client, subcontractor, staff, supplier..." value="${escapeAttr(isEdit ? (editData.payee || '') : '')}" ${largeInput}>
+          <label ${labelStyle}>Category</label>
+          <select id="pay_expense_category" ${largeInput}>
+            <option value="" ${!isEdit || !editData.expenseCategory ? 'selected' : ''}>-- Not Applicable --</option>
+            <option value="Client Deposit" ${isEdit && editData.expenseCategory === 'Client Deposit' ? 'selected' : ''}>Client Deposit</option>
+            <option value="Client Balance" ${isEdit && editData.expenseCategory === 'Client Balance' ? 'selected' : ''}>Client Balance</option>
+            <option value="Labour" ${isEdit && editData.expenseCategory === 'Labour' ? 'selected' : ''}>Labour</option>
+            <option value="Materials" ${isEdit && editData.expenseCategory === 'Materials' ? 'selected' : ''}>Materials</option>
+            <option value="Transportation" ${isEdit && editData.expenseCategory === 'Transportation' ? 'selected' : ''}>Transportation</option>
+            <option value="Feeding" ${isEdit && editData.expenseCategory === 'Feeding' ? 'selected' : ''}>Feeding</option>
+            <option value="Tools / Equipment" ${isEdit && editData.expenseCategory === 'Tools / Equipment' ? 'selected' : ''}>Tools / Equipment</option>
+            <option value="Miscellaneous" ${isEdit && editData.expenseCategory === 'Miscellaneous' ? 'selected' : ''}>Miscellaneous</option>
+          </select>
+          <label ${labelStyle}>Linked Work Order / Reference</label><input id="pay_ref" placeholder="Optional invoice, receipt, or work order ref" value="${escapeAttr(isEdit ? (editData.referenceId || '') : '')}" ${largeInput}>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-            <div><label ${labelStyle}>Amount Paid</label><input id="pay_amount" type="number" step="0.01" value="${escapeAttr(isEdit ? (editData.amount || '') : '')}" ${largeInput}></div>
+            <div><label ${labelStyle}>Amount</label><input id="pay_amount" type="number" step="0.01" value="${escapeAttr(isEdit ? (editData.amount || '') : '')}" ${largeInput}></div>
             <div>
               <label ${labelStyle}>Payment Method</label>
               <select id="pay_method" ${largeInput}>
@@ -811,7 +865,7 @@
           const amount = document.getElementById('pay_amount').value;
           if(!amount || Number(amount) <= 0) { alert("Enter a valid payment amount."); return; }
           submit.disabled = true; submit.innerText = "Saving...";
-          const payload = { paymentId: uniqueId, projectId: currentSelectedProjectId, paymentDate: new Date().toLocaleDateString(), payee: document.getElementById('pay_payee').value, referenceId: document.getElementById('pay_ref').value, amount, paymentMethod: document.getElementById('pay_method').value, status: document.getElementById('pay_status').value, notes: document.getElementById('pay_notes').value, attachments: currentModalFiles.join(ATTACHMENT_DELIMITER) };
+          const payload = { paymentId: uniqueId, projectId: currentSelectedProjectId, paymentDate: new Date().toLocaleDateString(), paymentDirection: document.getElementById('pay_direction').value, payee: document.getElementById('pay_payee').value, expenseCategory: document.getElementById('pay_expense_category').value, referenceId: document.getElementById('pay_ref').value, amount, paymentMethod: document.getElementById('pay_method').value, status: document.getElementById('pay_status').value, notes: document.getElementById('pay_notes').value, attachments: currentModalFiles.join(ATTACHMENT_DELIMITER) };
           callApi(isEdit ? 'updatePayment' : 'savePayment', payload).then(() => { closeModal(); loadPaymentsListings(); });
         };
       }
@@ -1021,19 +1075,23 @@
         `;
       }
       if (layout === "payment_summary" || layout === "master_dossier") {
-        const totalPaid = filteredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const totalReceived = filteredPayments.filter(isClientReceipt).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const totalOutgoing = filteredPayments.filter(p => !isClientReceipt(p)).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const smallExpenses = filteredPayments.filter(isPettyExpense).reduce((sum, p) => sum + Number(p.amount || 0), 0);
         const totalCommitted = filteredOrders.reduce((sum, w) => sum + Number(w.amount || 0), 0);
         contentHtml += `
           <h3 style="font-size:16px; margin-top:25px; margin-bottom:8px; text-transform:uppercase; border-bottom:1px solid #000; padding-bottom:4px;">${layout === 'master_dossier'?'IV':'I'}. Payments & Cost Tracking Summary</h3>
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:15px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-bottom:15px;">
             <div style="border:1px solid #000; padding:10px;"><small style="font-weight:800;">Committed</small><br><strong>₦${moneyValue(totalCommitted)}</strong></div>
-            <div style="border:1px solid #000; padding:10px;"><small style="font-weight:800;">Paid</small><br><strong>₦${moneyValue(totalPaid)}</strong></div>
-            <div style="border:1px solid #000; padding:10px;"><small style="font-weight:800;">Balance</small><br><strong>₦${moneyValue(totalCommitted - totalPaid)}</strong></div>
+            <div style="border:1px solid #000; padding:10px;"><small style="font-weight:800;">Client Received</small><br><strong>₦${moneyValue(totalReceived)}</strong></div>
+            <div style="border:1px solid #000; padding:10px;"><small style="font-weight:800;">Outgoing</small><br><strong>₦${moneyValue(totalOutgoing)}</strong></div>
+            <div style="border:1px solid #000; padding:10px;"><small style="font-weight:800;">Cash Position</small><br><strong>₦${moneyValue(totalReceived - totalOutgoing)}</strong></div>
           </div>
+          <p style="font-size:12px; font-weight:700; margin-bottom:8px;">Small expenses / petty cash total: ₦${moneyValue(smallExpenses)}</p>
           <table class="print-table">
-            <thead><tr><th>Date</th><th>Payee</th><th>Reference</th><th>Amount</th><th>Status</th></tr></thead>
+            <thead><tr><th>Date</th><th>Type</th><th>Client / Payee</th><th>Category</th><th>Reference</th><th>Amount</th><th>Status</th></tr></thead>
             <tbody>
-              ${filteredPayments.map(p => `<tr><td>${escapeHtml(p.paymentDate || '')}</td><td><strong>${escapeHtml(p.payee || '')}</strong></td><td>${escapeHtml(p.referenceId || '')}</td><td>₦${moneyValue(p.amount)}</td><td>${escapeHtml(p.status || '')}</td></tr>`).join('') || '<tr><td colspan="5">No payment records registered.</td></tr>'}
+              ${filteredPayments.map(p => `<tr><td>${escapeHtml(p.paymentDate || '')}</td><td>${escapeHtml(paymentDirectionOf(p))}</td><td><strong>${escapeHtml(p.payee || '')}</strong></td><td>${escapeHtml(p.expenseCategory || '')}</td><td>${escapeHtml(p.referenceId || '')}</td><td>${isClientReceipt(p) ? '+' : '-'}₦${moneyValue(p.amount)}</td><td>${escapeHtml(p.status || '')}</td></tr>`).join('') || '<tr><td colspan="7">No payment records registered.</td></tr>'}
             </tbody>
           </table>
         `;
