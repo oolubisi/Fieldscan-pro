@@ -6,6 +6,11 @@
       return String(value || '').split(ATTACHMENT_DELIMITER).map(s => s.trim()).filter(Boolean);
     }
 
+    function normalizeAttachments(files) {
+      if (!Array.isArray(files) || files.length === 0) return '';
+      return files.filter(Boolean).join(ATTACHMENT_DELIMITER).trim() || '';
+    }
+
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, (char) => ({
         '&': '&amp;',
@@ -809,7 +814,8 @@
       else if (type === 'payment') {
         const uniqueId = isEdit ? editData.paymentId : "PAY-" + Math.random().toString(36).substr(2, 5).toUpperCase();
         title.innerText = isEdit ? "Modify Payment" : "Log Payment";
-        if (isEdit && editData.attachments) currentModalFiles = splitAttachments(editData.attachments);
+        const existingAttachments = String(editData?.attachments || '').trim();
+        if (isEdit && existingAttachments) currentModalFiles = splitAttachments(existingAttachments);
 
         body.innerHTML = `
           <label ${labelStyle}>Payment ID</label><input value="${escapeAttr(uniqueId)}" disabled style="font-size: 20px; padding: 12px; margin-bottom: 5px; background: var(--card-light); font-weight: 800; color: #000;">
@@ -836,7 +842,7 @@
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
             <div><label ${labelStyle}>Amount</label><input id="pay_amount" type="number" step="0.01" value="${escapeAttr(isEdit ? (editData.amount || '') : '')}" ${largeInput}></div>
             <div>
-              <label ${labelStyle}>Payment Method</label>
+              <label ${labelStyle}>Method</label>
               <select id="pay_method" ${largeInput}>
                 <option value="Cash" ${isEdit && editData.paymentMethod === 'Cash' ? 'selected' : ''}>Cash</option>
                 <option value="Transfer" ${isEdit && editData.paymentMethod === 'Transfer' ? 'selected' : ''}>Transfer</option>
@@ -865,7 +871,8 @@
           const amount = document.getElementById('pay_amount').value;
           if(!amount || Number(amount) <= 0) { alert("Enter a valid payment amount."); return; }
           submit.disabled = true; submit.innerText = "Saving...";
-          const payload = { paymentId: uniqueId, projectId: currentSelectedProjectId, paymentDate: new Date().toLocaleDateString(), paymentDirection: document.getElementById('pay_direction').value, payee: document.getElementById('pay_payee').value, expenseCategory: document.getElementById('pay_expense_category').value, referenceId: document.getElementById('pay_ref').value, amount, paymentMethod: document.getElementById('pay_method').value, status: document.getElementById('pay_status').value, notes: document.getElementById('pay_notes').value, attachments: currentModalFiles.join(ATTACHMENT_DELIMITER) };
+          const attachmentsValue = normalizeAttachments(currentModalFiles);
+          const payload = { paymentId: uniqueId, projectId: currentSelectedProjectId, paymentDate: new Date().toLocaleDateString(), paymentDirection: document.getElementById('pay_direction').value, payee: document.getElementById('pay_payee').value, expenseCategory: document.getElementById('pay_expense_category').value, referenceId: document.getElementById('pay_ref').value, amount, paymentMethod: document.getElementById('pay_method').value, status: document.getElementById('pay_status').value, notes: document.getElementById('pay_notes').value, attachments: attachmentsValue };
           callApi(isEdit ? 'updatePayment' : 'savePayment', payload).then(() => { closeModal(); loadPaymentsListings(); });
         };
       }
