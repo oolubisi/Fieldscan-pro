@@ -493,19 +493,19 @@
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:center;">
               <div>
                 <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Client Received</small>
-                <div style="font-size:24px; font-weight:900; color:var(--success);">₦${moneyValue(totalReceived)}</div>
+                <div style="font-size:14px; font-weight:900; color:var(--success);">₦${moneyValue(totalReceived)}</div>
               </div>
               <div>
                 <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Total Outgoing</small>
-                <div style="font-size:24px; font-weight:900; color:var(--danger);">₦${moneyValue(totalExpenses)}</div>
+                <div style="font-size:14px; font-weight:900; color:var(--danger);">₦${moneyValue(totalExpenses)}</div>
               </div>
               <div>
                 <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Small Expenses</small>
-                <div style="font-size:20px; font-weight:900;">₦${moneyValue(smallExpenses)}</div>
+                <div style="font-size:12px; font-weight:900;">₦${moneyValue(smallExpenses)}</div>
               </div>
               <div>
                 <small style="font-weight:900; text-transform:uppercase; color:var(--muted);">Net Balance</small>
-                <div style="font-size:20px; font-weight:900; color:${netBalance >= 0 ? 'var(--success)' : 'var(--danger)'};">₦${moneyValue(netBalance)}</div>
+                <div style="font-size:12px; font-weight:900; color:${netBalance >= 0 ? 'var(--success)' : 'var(--danger)'};">₦${moneyValue(netBalance)}</div>
               </div>
             </div>
           </div>
@@ -845,7 +845,7 @@
               <label ${labelStyle}>Method</label>
               <select id="pay_method" ${largeInput}>
                 <option value="Cash" ${isEdit && editData.paymentMethod === 'Cash' ? 'selected' : ''}>Cash</option>
-                <option value="Transfer" ${isEdit && editData.paymentMethod === 'Transfer' ? 'selected' : ''}>Transfer</option>
+                <option value="Transfer" ${(!isEdit || editData.paymentMethod === 'Transfer') ? 'selected' : ''}>Transfer</option>
                 <option value="POS/Card" ${isEdit && editData.paymentMethod === 'POS/Card' ? 'selected' : ''}>POS/Card</option>
                 <option value="Cheque" ${isEdit && editData.paymentMethod === 'Cheque' ? 'selected' : ''}>Cheque</option>
               </select>
