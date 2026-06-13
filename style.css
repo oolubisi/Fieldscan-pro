@@ -17,6 +17,13 @@ body {
   padding: 16px;
   padding-bottom: 80px;
 }
+.card {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.card span, .card div {
+  max-width: 100%;
+}
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .home-btn { background: var(--text); border: none; color: white; width: 44px; height: 44px; border-radius: 12px; font-size: 20px; cursor: pointer; }
 h2 { font-size: 22px; font-weight: 800; }
