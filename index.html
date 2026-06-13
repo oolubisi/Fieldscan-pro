@@ -20,7 +20,7 @@
     <div id="sync-status" style="background:#000; color:#fff; padding:6px 10px; border-radius:20px; font-size:12px; font-weight:800; display:none;"></div>
   </div>
 
-  <!-- Segment Bar (Dashboard, Vendors, Reports) -->
+  <!-- Segment Bar (Dashboard, Vendors, Reports, Sync, Refresh) -->
   <div class="segment-bar">
     <button class="segment-btn" onclick="showPage('dashboard')"><i class="fas fa-chart-line"></i> Projects</button>
     <button class="segment-btn" onclick="showPage('vendors')"><i class="fas fa-truck"></i> Vendors</button>
@@ -91,17 +91,42 @@
         <div><strong>Notes:</strong> <textarea id="c-meta-notes" rows="3" readonly style="background:#f5f5f5;"></textarea></div>
       </div>
     </div>
-    <div id="console-seg-inspections" class="console-tab-window page-view"><div id="console-inspections-list"></div><button class="action-btn" style="margin-top:10px;" onclick="openModal('inspection', null)">+ New Inspection</button></div>
-    <div id="console-seg-takeoff" class="console-tab-window page-view"><div id="console-takeoff-list"></div><button class="action-btn" style="margin-top:10px;" onclick="openModal('takeoff_item', null)">+ New Take‑Off</button></div>
-    <div id="console-seg-progress" class="console-tab-window page-view"><div id="console-progress-feed"></div><button class="action-btn" style="margin-top:10px;" onclick="openModal('progress_entry', null)">+ Log Progress</button></div>
-    <div id="console-seg-workorders" class="console-tab-window page-view"><div id="console-workorders-list"></div><button class="action-btn" style="margin-top:10px;" onclick="openModal('workorder', null)">+ New Work Order</button></div>
-    <div id="console-seg-payments" class="console-tab-window page-view"><div id="console-payments-list"></div><button class="action-btn" style="margin-top:10px;" onclick="openModal('payment', null)">+ Log Payment</button></div>
+    <div id="console-seg-inspections" class="console-tab-window page-view">
+      <div id="console-inspections-list"></div>
+      <button class="action-btn" style="margin-top:10px;" onclick="openModal('inspection', null)">+ New Inspection</button>
+    </div>
+    <div id="console-seg-takeoff" class="console-tab-window page-view">
+      <div id="console-takeoff-list"></div>
+      <button class="action-btn" style="margin-top:10px;" onclick="openModal('takeoff_item', null)">+ New Take‑Off</button>
+    </div>
+    <div id="console-seg-progress" class="console-tab-window page-view">
+      <div id="console-progress-feed"></div>
+      <button class="action-btn" style="margin-top:10px;" onclick="openModal('progress_entry', null)">+ Log Progress</button>
+    </div>
+    <div id="console-seg-workorders" class="console-tab-window page-view">
+      <div id="console-workorders-list"></div>
+      <button class="action-btn" style="margin-top:10px;" onclick="openModal('workorder', null)">+ New Work Order</button>
+    </div>
+    <div id="console-seg-payments" class="console-tab-window page-view">
+      <div id="console-payments-list"></div>
+      <button class="action-btn" style="margin-top:10px;" onclick="openModal('payment', null)">+ Log Payment</button>
+    </div>
   </div>
 
   <!-- Modal Overlay -->
-  <div id="modalOverlay" class="modal-overlay"><div id="modalContent" class="modal"><div style="display:flex; justify-content:space-between;"><h3 id="modalTitle">Modal</h3><span onclick="closeModal()" style="font-size:28px; cursor:pointer;">&times;</span></div><div id="modalBody"></div><button id="modalSubmit" class="action-btn" style="margin-top:20px;">Save</button></div></div>
+  <div id="modalOverlay" class="modal-overlay">
+    <div id="modalContent" class="modal">
+      <div style="display:flex; justify-content:space-between;">
+        <h3 id="modalTitle">Modal</h3>
+        <span onclick="closeModal()" style="font-size:28px; cursor:pointer;">&times;</span>
+      </div>
+      <div id="modalBody"></div>
+      <button id="modalSubmit" class="action-btn" style="margin-top:20px;">Save</button>
+    </div>
+  </div>
 </div>
 
+<!-- Load ES modules entry point -->
 <script type="module" src="script.js"></script>
 </body>
 </html>
