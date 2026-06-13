@@ -5,7 +5,18 @@ import { initReportsConsoleEngine, handleReportOptionsPopulation, compileFieldRe
 import { openModal, closeModal, removeAttachmentByIndex, clearVendorAvatarPhoto } from './modals.js';
 import { loadProjectConsoleHub, triggerEditProjectProfile, switchConsoleSegment } from './console.js';
 
-// ========== ATTACH ALL GLOBAL FUNCTIONS FOR INLINE ONCLICK ==========
+// Define showPage first
+function showPage(pageId) {
+  document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active-view'));
+  const target = document.getElementById(`view-${pageId}`);
+  if (target) target.classList.add('active-view');
+  if (pageId === 'dashboard') refreshMasterDashboard();
+  if (pageId === 'vendors') refreshVendorsListView();
+  if (pageId === 'reports') initReportsConsoleEngine();
+  window.scrollTo(0, 0);
+}
+
+// Attach ALL global functions to window
 window.showPage = showPage;
 window.loadProjectConsoleHub = loadProjectConsoleHub;
 window.triggerEditProjectProfile = triggerEditProjectProfile;
@@ -19,37 +30,19 @@ window.refreshAllData = refreshAllData;
 window.handleReportOptionsPopulation = handleReportOptionsPopulation;
 window.compileFieldReport = compileFieldReport;
 
-// ========== PAGE NAVIGATION (FIXED) ==========
-export function showPage(pageId) {
-  // Remove active-view from ALL page containers
-  document.querySelectorAll('.page-view').forEach(view => {
-    view.classList.remove('active-view');
-  });
-  // Add active-view only to the target
-  const target = document.getElementById(`view-${pageId}`);
-  if (target) target.classList.add('active-view');
-  
-  // Load data only when needed
-  if (pageId === 'dashboard') refreshMasterDashboard();
-  if (pageId === 'vendors') refreshVendorsListView();
-  if (pageId === 'reports') initReportsConsoleEngine();
-  
-  window.scrollTo(0, 0);
-}
-
-// ========== SERVICE WORKER & EVENT LISTENERS ==========
+// Service Worker & Events
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(e => console.warn(e));
-  });
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(e => console.warn(e)));
 }
 window.addEventListener('online', syncQueuedRequests);
 window.addEventListener('offline', updateSyncStatus);
 
-// ========== INITIAL LOAD ==========
+// Initial load
 window.onload = () => {
   updateSyncStatus();
   refreshMasterDashboard();
   if (navigator.onLine) syncQueuedRequests();
-  showPage('dashboard');  // explicitly show dashboard
+  showPage('dashboard');
 };
+
+export { showPage };  // export if needed elsewhere
