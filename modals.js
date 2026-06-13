@@ -100,3 +100,4 @@ export async function openModal(type, editData = null) {
   // In practice, you would copy the body of each modal case from the original script,
   // replacing any references to global functions with imports.
 }
+export { removeAttachmentByIndex, clearVendorAvatarPhoto };
