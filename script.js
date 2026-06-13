@@ -384,59 +384,12 @@ async function loadWorkOrdersListings() {
 }
 async function loadPaymentsListings() {
   const container = document.getElementById('console-payments-list');
-  container.innerHTML = `<p style="text-align:center; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Loading payment records...</p>`;
+  container.innerHTML = `<p style="text-align:center;padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading...</p>`;
   const payments = await callApi('getPayments', {});
   cache.payments = payments || [];
   const projectPayments = cache.payments.filter(p => p.projectId === currentSelectedProjectId);
-  if (projectPayments.length === 0) {
-    container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">No payment records logged.</p>`;
-    return;
-  }
-  const totalReceived = projectPayments.filter(isClientReceipt).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const totalExpenses = projectPayments.filter(p => !isClientReceipt(p)).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const smallExpenses = projectPayments.filter(isPettyExpense).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const netBalance = totalReceived - totalExpenses;
-  
-  container.innerHTML = `
-    <div class="card" style="background:var(--card); border-color:#000; padding:12px;">
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-weight:800; text-transform:uppercase; font-size:13px;">Client Received</span>
-          <span style="font-size:18px; font-weight:900; color:var(--success);">₦${moneyValue(totalReceived)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-weight:800; text-transform:uppercase; font-size:13px;">Total Outgoing</span>
-          <span style="font-size:18px; font-weight:900; color:var(--danger);">₦${moneyValue(totalExpenses)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-weight:800; text-transform:uppercase; font-size:13px;">Small Expenses</span>
-          <span style="font-size:16px; font-weight:900;">₦${moneyValue(smallExpenses)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 8px;">
-          <span style="font-weight:800; text-transform:uppercase; font-size:14px;">Net Balance</span>
-          <span style="font-size:20px; font-weight:900; color:${netBalance >= 0 ? 'var(--success)' : 'var(--danger)'};">₦${moneyValue(netBalance)}</span>
-        </div>
-      </div>
-    </div>
-    ${projectPayments.map(p => {
-      const direction = paymentDirectionOf(p);
-      const incoming = isClientReceipt(p);
-      return `
-        <div class="card" onclick="openModal('payment', cache.payments.find(t=>t.paymentId===${escapeAttr(JSON.stringify(p.paymentId || ''))}))" style="background:#fff; border-color:#000; border-left:6px solid ${incoming ? 'var(--success)' : 'var(--danger)'}; cursor:pointer;">
-          <div style="display:flex; justify-content:space-between; align-items:start; gap:10px;">
-            <div>
-              <strong style="font-size:18px;">${escapeHtml(p.payee || 'Payment')}</strong><br>
-              <small style="color:var(--muted); font-weight:700;">${escapeHtml(p.paymentDate || '')} | ${escapeHtml(p.paymentMethod || '')} | ${escapeHtml(direction)}</small>
-            </div>
-            <span style="font-size:11px; font-weight:900; background:${p.status === 'Cleared' ? 'var(--success)' : '#fd7e14'}; color:#fff; padding:3px 8px; border-radius:4px; text-transform:uppercase;">${escapeHtml(p.status || 'Logged')}</span>
-          </div>
-          <div style="font-size:22px; font-weight:900; margin-top:8px; color:${incoming ? 'var(--success)' : 'var(--danger)'};">${incoming ? '+' : '-'}₦${moneyValue(p.amount)}</div>
-          ${p.expenseCategory ? `<div style="font-size:12px; font-weight:900; color:var(--muted); text-transform:uppercase; margin-top:4px;">${escapeHtml(p.expenseCategory)}</div>` : ''}
-          ${p.notes ? `<p style="font-size:14px; font-weight:600; margin-top:6px; color:#000;">${escapeHtml(p.notes)}</p>` : ''}
-        </div>
-      `;
-    }).join('')}
-  `;
+  if (!projectPayments.length) { container.innerHTML = `<p style="text-align:center;padding:20px;">No payments.</p>`; return; }
+  container.innerHTML = projectPayments.map(p => `<div class="card" onclick="openModal('payment', ${JSON.stringify(p).replace(/"/g, '&quot;')})" style="cursor:pointer;"><strong>${escapeHtml(p.payee)}</strong> (${escapeHtml(p.paymentDirection)})<br>₦${moneyValue(p.amount)}<br>${escapeHtml(p.paymentDate)} | ${escapeHtml(p.status)}</div>`).join('');
 }
 
 // ======================== OPEN MODAL (FULL IMPLEMENTATION) ========================
