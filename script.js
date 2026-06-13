@@ -1,5 +1,5 @@
 // ======================== CONFIGURATION ========================
-const GAS_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec"; // REPLACE WITH YOUR DEPLOYMENT
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyMbq7heDDK6lelr4fD3ek24njHQDmo7zaC8ocusLGDyu4u-NxoO7e_Wt-zgaRkgIbJ/exec"; // REPLACE WITH YOUR DEPLOYMENT
 const AUTH_TOKEN = "FieldScan2025!SecureToken";
 const ATTACHMENT_DELIMITER = "|||";
 
