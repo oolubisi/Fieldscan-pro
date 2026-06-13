@@ -5,11 +5,7 @@ import { openModal } from './modals.js';
 import { loadProjectConsoleHub } from './console.js';
 
 export async function refreshMasterDashboard() {
-  const stats = await callApi('getStats', {});
-  if (stats && stats.activeVendors) {
-    const badge = document.getElementById('badge-vendors');
-    if (badge) badge.innerText = stats.activeVendors;
-  }
+  // Removed badge update because element doesn't exist
   const projects = await callApi('getProjects', {});
   const cache = getCache();
   cache.projects = projects || [];
