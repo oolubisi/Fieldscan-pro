@@ -1,9 +1,7 @@
 {
   "name": "FieldScan Pro",
   "short_name": "FieldScan",
-  "description": "Construction project inspection, scope, take-off, task, payment, and progress tracker.",
   "start_url": "./index.html",
-  "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0056b3",
