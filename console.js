@@ -149,10 +149,13 @@ export async function loadPaymentsListings() {
     return;
   }
   
-  const totalReceived = projectPayments.filter(isClientReceipt).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const totalExpenses = projectPayments.filter(p => !isClientReceipt(p)).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const smallExpenses = projectPayments.filter(isPettyExpense).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const netBalance = totalReceived - totalExpenses;
+  const clearedPayments = projectPayments.filter(p => p.status !== 'Pending');
+  const pendingPayments = projectPayments.filter(p => p.status === 'Pending' && !isClientReceipt(p));
+  const totalReceived = clearedPayments.filter(isClientReceipt).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const totalExpenses = clearedPayments.filter(p => !isClientReceipt(p)).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const smallExpenses = clearedPayments.filter(isPettyExpense).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const totalPending = pendingPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const netBalance = totalReceived - totalExpenses - totalPending;
   
   // Build totals card with safe flex + word‑break
   const totalsHtml = `
@@ -173,10 +176,15 @@ export async function loadPaymentsListings() {
           <span style="font-weight:800; text-transform:uppercase; font-size:13px; flex-shrink:0;">Small Expenses</span>
           <span style="font-size:16px; font-weight:900; text-align:right; word-break:break-word; overflow-wrap:break-word; white-space:normal;">₦${moneyValue(smallExpenses)}</span>
         </div>
+        <!-- Pending Payments -->
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0;">
+          <span style="font-weight:800; text-transform:uppercase; font-size:13px; flex-shrink:0;">Pending Payments</span>
+          <span style="font-size:18px; font-weight:900; color:#fd7e14; text-align:right; word-break:break-word; overflow-wrap:break-word; white-space:normal;">₦${moneyValue(totalPending)}</span>
+        </div>
         <!-- Net Balance -->
         <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; border-top: 1px solid var(--border); padding-top: 8px;">
           <span style="font-weight:800; text-transform:uppercase; font-size:14px; flex-shrink:0;">Net Balance</span>
-          <span style="font-size:20px; font-weight:900; color:${netBalance >= 0 ? 'var(--success)' : 'var(--danger)'}; text-align:right; word-break:break-word; overflow-wrap:break-word; white-space:normal;">₦${moneyValue(netBalance)}</span>
+          <span style="font-size:18px; font-weight:900; color:${netBalance >= 0 ? 'var(--success)' : 'var(--danger)'}; text-align:right; word-break:break-word; overflow-wrap:break-word; white-space:normal;">₦${moneyValue(netBalance)}</span>
         </div>
       </div>
     </div>
@@ -194,7 +202,7 @@ export async function loadPaymentsListings() {
           </div>
           <span style="font-size:11px; font-weight:900; background:${p.status === 'Cleared' ? 'var(--success)' : '#fd7e14'}; color:#fff; padding:3px 8px; border-radius:4px; text-transform:uppercase;">${escapeHtml(p.status || 'Logged')}</span>
         </div>
-        <div style="font-size:22px; font-weight:900; margin-top:8px; color:${incoming ? 'var(--success)' : 'var(--danger)'};">${incoming ? '+' : '-'}₦${moneyValue(p.amount)}</div>
+        <div style="font-size:18px; font-weight:900; margin-top:8px; color:${incoming ? 'var(--success)' : 'var(--danger)'};">${incoming ? '+' : '-'}₦${moneyValue(p.amount)}</div>
         ${p.expenseCategory ? `<div style="font-size:12px; font-weight:900; color:var(--muted); text-transform:uppercase; margin-top:4px;">${escapeHtml(p.expenseCategory)}</div>` : ''}
         ${p.notes ? `<p style="font-size:14px; font-weight:600; margin-top:6px; color:#000;">${escapeHtml(p.notes)}</p>` : ''}
       </div>
