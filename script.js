@@ -1,5 +1,5 @@
     // --- INSERT YOUR GOOGLE APPS SCRIPT WEB APP URL HERE ---
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbyMbq7heDDK6lelr4fD3ek24njHQDmo7zaC8ocusLGDyu4u-NxoO7e_Wt-zgaRkgIbJ/exec"; 
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwQ5HeJP9_msrGeaHRpqn9cgXYwwV48oLS2uBb-F8S90rwprmtoSONpM1UxSECWw41v/exec"; 
     const ATTACHMENT_DELIMITER = "|||";
 
     function splitAttachments(value) {
