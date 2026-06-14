@@ -268,18 +268,53 @@ async function updateSyncStatus() {
   badge.style.display = 'none';
 }
 
+function setButtonState(buttonId, html, disabled) {
+  const button = document.getElementById(buttonId);
+  if (!button) return;
+  button.innerHTML = html;
+  button.disabled = disabled;
+  button.style.opacity = disabled ? '0.65' : '';
+  button.style.pointerEvents = disabled ? 'none' : '';
+}
+
+function showFinishedButtonState(buttonId, doneHtml, normalHtml) {
+  setButtonState(buttonId, doneHtml, false);
+  setTimeout(() => {
+    setButtonState(buttonId, normalHtml, false);
+    updateSyncStatus();
+  }, 1200);
+}
+
 async function triggerManualSync() {
   if (!navigator.onLine) { alert("You are offline. Please connect to internet."); return; }
-  await syncQueuedRequests();
+  const normalHtml = `<i class="fas fa-sync-alt"></i> Sync Now <span id="sync-pending-badge" class="sync-count-badge" style="display:none;">0</span>`;
+  try {
+    setButtonState('sync-now-btn', `<i class="fas fa-sync-alt fa-spin"></i> Syncing...`, true);
+    await syncQueuedRequests();
+    showFinishedButtonState('sync-now-btn', `<i class="fas fa-check"></i> Synced`, normalHtml);
+  } catch (err) {
+    setButtonState('sync-now-btn', normalHtml, false);
+    throw err;
+  } finally {
+    await updateSyncStatus();
+  }
 }
 
 async function refreshAllData() {
   if (!navigator.onLine) { alert("Offline – cannot refresh from server."); return; }
-  await callApi('getProjects', {}); await callApi('getInspections', {}); await callApi('getTakeOffItems', {});
-  await callApi('getProgressLogs', {}); await callApi('getVendors', {}); await callApi('getWorkOrders', {}); await callApi('getPayments', {});
-  await refreshMasterDashboard();
-  if (currentSelectedProjectId) {
-    loadInspectionListings(); loadTakeOffListings(); loadProgressTimelineFeed(); loadWorkOrdersListings(); loadPaymentsListings();
+  const normalHtml = `<i class="fas fa-database"></i> Refresh`;
+  try {
+    setButtonState('refresh-data-btn', `<i class="fas fa-spinner fa-spin"></i> Refreshing...`, true);
+    await callApi('getProjects', {}); await callApi('getInspections', {}); await callApi('getTakeOffItems', {});
+    await callApi('getProgressLogs', {}); await callApi('getVendors', {}); await callApi('getWorkOrders', {}); await callApi('getPayments', {});
+    await refreshMasterDashboard();
+    if (currentSelectedProjectId) {
+      loadInspectionListings(); loadTakeOffListings(); loadProgressTimelineFeed(); loadWorkOrdersListings(); loadPaymentsListings();
+    }
+    showFinishedButtonState('refresh-data-btn', `<i class="fas fa-check"></i> Refreshed`, normalHtml);
+  } catch (err) {
+    setButtonState('refresh-data-btn', normalHtml, false);
+    throw err;
   }
   alert("Data refreshed from server.");
 }
