@@ -7,7 +7,7 @@ import { loadProjectConsoleHub, loadInspectionListings, loadTakeOffListings, loa
 let currentModalFiles = [];
 let currentAvatarPhoto = "";
 
-const PLACEHOLDER_AVATAR = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M12%2012c2.21%200%204-1.79%204-4s-1.79-4-4-4-4%201.79-4%204%201.79%204%204%204zm0%202c-2.67%200-8%201.34-8%204v2h16v-2c0-2.66-5.33-4-8-4z%22%2F%3E%3C%2Fsvg%3E';
+const PLACEHOLDER_AVATAR = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M12%2012c2.21%200%204-1.79%204-4s-1.79-4-4-4-4%201.79-4%204%201.79%204%204%204zm0%202c-2.67%200-8%201.34-8%204v2h16v-2c0-2.66-5.33-4-8-4z%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E';
 
 // ======================== ATTACHMENT PREVIEW HELPERS ========================
 
@@ -22,7 +22,7 @@ export function populateModalInlineImageGalleryPreviews(containerId) {
     const thumb = isPdf
       ? `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#f0f0f0;border-radius:8px;border:1px solid #000;font-size:22px;"><i class="fas fa-file-pdf"></i></div>`
       : `<img src="${escapeAttr(src)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid #000;">`;
-    return `<div style="position:relative; width:60px; height:60px;">${thumb}<div onclick="window.removeAttachmentByIndex(${idx}, '${containerId}')" style="position:absolute; top:-6px; right:-6px; background:red; color:white; border-radius:50%; width:20px; height:20px; text-align:center; line-height:18px; cursor:pointer;">&times;</div></div>`;
+    return `<div style="position:relative; width:60px; height:60px;">${thumb}<div onclick="window.removeAttachmentByIndex(${idx}, '${containerId}')" style="position:absolute; top:-6px; right:-6px; width:24px; height:24px; background:#f00; color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px; border:2px solid #fff;">&times;</div></div>`;
   }).join('');
 }
 
@@ -99,13 +99,27 @@ export function generateFrontendPreviewId(type) {
   return prefix + String(max+1).padStart(3, '0');
 }
 
+// ======================== DATE CONVERSION ========================
+
+function toDateInputValue(dateStr) {
+  if (!dateStr) {
+    const today = new Date();
+    return today.toISOString().slice(0, 10);
+  }
+  const ddmmyyyy = String(dateStr).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyy) {
+    const [, d, m, y] = ddmmyyyy;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.slice(0, 10);
+  const today = new Date();
+  return today.toISOString().slice(0, 10);
+}
+
 // ======================== MODAL OPEN/CLOSE ========================
 
 export function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
 
-// Generic helper: disable the Save button while a request is in flight,
-// re-enable it (and restore its label) if the request fails so the user can
-// retry without re-opening the modal.
 async function submitWithGuard(submitBtn, fn) {
   submitBtn.disabled = true;
   submitBtn.innerText = "Saving...";
@@ -113,7 +127,7 @@ async function submitWithGuard(submitBtn, fn) {
     await fn();
   } catch (err) {
     if (err instanceof ApiError) {
-      // callApi already alerted the user with the server's message
+      // callApi already alerted the user
     } else {
       console.error(err);
       alert("Something went wrong while saving. Please try again.");
@@ -148,7 +162,7 @@ export async function openModal(type, editData = null) {
       <label ${labelStyle}>Site Location</label><input id="p_loc" value="${escapeAttr(isEdit?editData.siteLocation:'')}" ${largeInput}>
       <label ${labelStyle}>Client Phone (11 digits)</label><input id="p_phone" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${escapeAttr(isEdit?editData.clientPhone:'')}" ${largeInput}>
       <label ${labelStyle}>Client Email</label><input id="p_email" type="email" value="${escapeAttr(isEdit?editData.clientEmail:'')}" ${largeInput}>
-      <label ${labelStyle}>Status</label><select id="p_status" ${largeInput}><option value="Active" ${isEdit&&editData.projectStatus==='Active'?'selected':''}>Active</option><option value="In Planning" ${isEdit&&editData.projectStatus==='In Planning'?'selected':''}>In Planning</option><option value="Handed Over" ${isEdit&&editData.projectStatus==='Handed Over'?'selected':''}>Handed Over</option><option value="Declined" ${isEdit&&editData.projectStatus==='Declined'?'selected':''}>Declined</option></select>
+      <label ${labelStyle}>Status</label><select id="p_status" ${largeInput}><option value="Active" ${isEdit&&editData.projectStatus==='Active'?'selected':''}>Active</option><option value="In Planning" ${isEdit&&editData.projectStatus==='In Planning'?'selected':''}>In Planning</option><option value="Complete" ${isEdit&&editData.projectStatus==='Complete'?'selected':''}>Complete</option></select>
       <label ${labelStyle}>Notes</label><textarea id="p_notes" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.notes:'')}</textarea>
     `;
     submit.onclick = () => {
@@ -341,7 +355,7 @@ export async function openModal(type, editData = null) {
       <div style="display:flex; gap:10px; justify-content:center; margin-bottom:10px;">
         <label class="icon-upload-label" for="v_passport_file" style="margin:0;"><i class="fas fa-camera"></i></label>
         <input type="file" id="v_passport_file" accept="image/*" style="display:none;">
-        <button type="button" id="v_pass_remove_btn" class="action-btn" style="width:auto; padding:0 16px; background:var(--danger); display:${currentAvatarPhoto ? 'block':'none'};" onclick="window.clearVendorAvatarPhoto()">Remove</button>
+        <button type="button" id="v_pass_remove_btn" class="action-btn" style="width:auto; padding:0 16px; background:var(--danger); display:${currentAvatarPhoto ? 'block':'none'};" onclick="window.clearVendorAvatarPhoto()">Remove Photo</button>
       </div>
       <label ${labelStyle}>Company / Vendor Name</label><input id="v_company" value="${escapeAttr(isEdit?editData.company:'')}" ${largeInput}>
       <label ${labelStyle}>Trade</label><input id="v_trade" value="${escapeAttr(isEdit?editData.trade:'')}" ${largeInput} placeholder="e.g. Plumbing, Electrical">
@@ -404,7 +418,7 @@ export async function openModal(type, editData = null) {
   else if (type === 'workorder') {
     title.innerText = isEdit ? "Edit Work Order" : "New Work Order";
     const projectId = isEdit ? editData.projectId : getCurrentProjectId();
-    const workOrderId = isEdit ? editData.workOrderId : null; // server assigns on create
+    const workOrderId = isEdit ? editData.workOrderId : null;
     currentModalFiles = isEdit ? splitAttachments(editData.attachments) : [];
 
     const cache = getCache();
@@ -464,7 +478,7 @@ export async function openModal(type, editData = null) {
   else if (type === 'payment') {
     title.innerText = isEdit ? "Edit Payment" : "Log Payment";
     const projectId = isEdit ? editData.projectId : getCurrentProjectId();
-    const paymentId = isEdit ? editData.paymentId : null; // server assigns on create
+    const paymentId = isEdit ? editData.paymentId : null;
     currentModalFiles = isEdit ? splitAttachments(editData.attachments) : [];
 
     const directions = ['Client Receipt','Outgoing Payment','Small Expense'];
@@ -529,27 +543,6 @@ export async function openModal(type, editData = null) {
     body.innerHTML = `<p>Unsupported modal type: ${escapeHtml(type)}</p>`;
     submit.style.display = 'none';
   }
-}
-
-// ======================== SHARED HELPERS ========================
-
-// Converts a dd/MM/yyyy (server format) or empty string to yyyy-MM-dd for <input type="date">.
-// If given an already-ISO date or nothing, falls back sensibly.
-function toDateInputValue(dateStr) {
-  if (!dateStr) {
-    const today = new Date();
-    return today.toISOString().slice(0, 10);
-  }
-  // dd/MM/yyyy -> yyyy-MM-dd
-  const ddmmyyyy = String(dateStr).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (ddmmyyyy) {
-    const [, d, m, y] = ddmmyyyy;
-    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-  }
-  // already yyyy-MM-dd
-  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.slice(0, 10);
-  const today = new Date();
-  return today.toISOString().slice(0, 10);
 }
 
 export { removeAttachmentByIndex, clearVendorAvatarPhoto };

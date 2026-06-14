@@ -8,7 +8,7 @@ export async function initReportsConsoleEngine() {
   cache.projects = projects || [];
   setCache(cache);
   const pSel = document.getElementById('rep-project-sel');
-  if (pSel) pSel.innerHTML = '<option value="">-- Select Project --</option>' + cache.projects.map(p => `<option value="${escapeAttr(p.projectId)}">${escapeHtml(p.clientName)} (${p.projectId})</option>`).join('');
+  if (pSel) pSel.innerHTML = '<option value="">-- Select Project --</option>' + cache.projects.map(p => `<option value="${escapeAttr(p.projectId)}">${escapeHtml(p.clientName)} (${escapeAttr(p.projectId)})</option>`).join('');
   handleReportOptionsPopulation();
 }
 
