@@ -13,17 +13,27 @@ export function getCache() { return cache; }
 export function setCurrentProjectId(id) { currentSelectedProjectId = id; }
 export function getCurrentProjectId() { return currentSelectedProjectId; }
 
+// Custom error type so callers can distinguish "server rejected this" (validation,
+// conflict, auth, etc.) from network/connectivity failures.
+export class ApiError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export async function callApi(action, data = {}) {
+  let response;
+
+  // Step 1: attempt the network request. Only a genuine network failure here
+  // should trigger offline queuing.
   try {
-    const payload = { action, data: { ...data, token: AUTH_TOKEN } };
-    const response = await fetch(GAS_URL, { method: "POST", body: JSON.stringify(payload) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const result = await response.json();
-    if (result && (result.status === 'error' || result.success === false)) throw new Error(result.message || result.error);
-    if (action.startsWith('get')) writeBackup(action, result);
-    return result;
-  } catch (err) {
-    console.warn("Offline, queuing:", err);
+    response = await fetch(GAS_URL, {
+      method: "POST",
+      body: JSON.stringify({ action, data: { ...data, token: AUTH_TOKEN } })
+    });
+  } catch (networkErr) {
+    console.warn("Network unavailable, queuing:", networkErr);
     if (action.startsWith('get')) return readBackup(action, action === 'getStats' ? { activeVendors: '--' } : []);
     await queueOfflineRequest(action, data);
     applyLocalMutation(action, data);
@@ -31,6 +41,40 @@ export async function callApi(action, data = {}) {
     alert("📴 Offline: saved locally. Will sync automatically when online.");
     return { status: "queued" };
   }
+
+  // Step 2: we got a response. Treat non-2xx HTTP as a network/server-level
+  // failure too (also queue offline for mutations).
+  if (!response.ok) {
+    console.warn(`HTTP ${response.status} from server, queuing:`, action);
+    if (action.startsWith('get')) return readBackup(action, action === 'getStats' ? { activeVendors: '--' } : []);
+    await queueOfflineRequest(action, data);
+    applyLocalMutation(action, data);
+    updateSyncStatus();
+    alert("📴 Offline: saved locally. Will sync automatically when online.");
+    return { status: "queued" };
+  }
+
+  // Step 3: we got a valid HTTP response and parsed JSON. Any application-level
+  // error (validation failure, conflict, auth, unknown action) is a REAL error,
+  // not an offline condition — surface it to the user instead of silently
+  // queuing a request that will just fail again forever.
+  let result;
+  try {
+    result = await response.json();
+  } catch (parseErr) {
+    throw new ApiError("Server returned an invalid response.");
+  }
+
+  if (result && (result.status === 'error' || result.success === false)) {
+    const message = result.error || result.message || "The server rejected this request.";
+    if (!action.startsWith('get')) {
+      alert("⚠️ " + message);
+    }
+    throw new ApiError(message);
+  }
+
+  if (action.startsWith('get')) writeBackup(action, result);
+  return result;
 }
 
 const DEPENDENCY_ORDER = {
@@ -59,6 +103,16 @@ export async function syncQueuedRequests() {
         const response = await fetch(GAS_URL, { method: "POST", body: JSON.stringify(payload) });
         if (response.ok) {
           const result = await response.json();
+          if (result && (result.status === 'error' || result.success === false)) {
+            // Server rejected this queued item (validation/conflict) — it will
+            // never succeed by retrying. Drop it from the queue and warn the user
+            // instead of retrying forever.
+            console.error(`Queued ${item.action} rejected by server:`, result.error || result.message);
+            alert(`⚠️ A queued change (${item.action}) was rejected by the server: ${result.error || result.message || 'unknown error'}. It has been removed from the sync queue.`);
+            await deleteQueuedRequest(item.id);
+            success = true;
+            break;
+          }
           if (!result.error && result.success !== false) {
             await deleteQueuedRequest(item.id);
             success = true;
@@ -103,11 +157,17 @@ export async function triggerManualSync() {
 
 export async function refreshAllData() {
   if (!navigator.onLine) { alert("Offline – cannot refresh from server."); return; }
-  await callApi('getProjects', {}); await callApi('getInspections', {}); await callApi('getTakeOffItems', {});
-  await callApi('getProgressLogs', {}); await callApi('getVendors', {}); await callApi('getWorkOrders', {}); await callApi('getPayments', {});
-  await refreshMasterDashboard();
-  if (currentSelectedProjectId) {
-    loadInspectionListings(); loadTakeOffListings(); loadProgressTimelineFeed(); loadWorkOrdersListings(); loadPaymentsListings();
+  try {
+    await callApi('getProjects', {}); await callApi('getInspections', {}); await callApi('getTakeOffItems', {});
+    await callApi('getProgressLogs', {}); await callApi('getVendors', {}); await callApi('getWorkOrders', {}); await callApi('getPayments', {});
+    await refreshMasterDashboard();
+    if (currentSelectedProjectId) {
+      loadInspectionListings(); loadTakeOffListings(); loadProgressTimelineFeed(); loadWorkOrdersListings(); loadPaymentsListings();
+    }
+    alert("Data refreshed from server.");
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+    // ApiError already alerted inside callApi for non-get actions; for get
+    // actions we alert here.
   }
-  alert("Data refreshed from server.");
 }

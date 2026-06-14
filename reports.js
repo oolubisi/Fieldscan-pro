@@ -9,6 +9,7 @@ export async function initReportsConsoleEngine() {
   setCache(cache);
   const pSel = document.getElementById('rep-project-sel');
   if (pSel) pSel.innerHTML = '<option value="">-- Select Project --</option>' + cache.projects.map(p => `<option value="${escapeAttr(p.projectId)}">${escapeHtml(p.clientName)} (${p.projectId})</option>`).join('');
+  handleReportOptionsPopulation();
 }
 
 export function handleReportOptionsPopulation() {
@@ -25,14 +26,21 @@ export async function compileFieldReport() {
   if (!pId || !layout) { alert("Select project and report type"); return; }
   const cache = getCache();
   const proj = cache.projects.find(p=>p.projectId===pId);
+  if (!proj) { alert("Project not found. Try refreshing the page and selecting again."); return; }
+
   const inspections = (await callApi('getInspections', {})).filter(i=>i.projectId===pId);
   const payments = (await callApi('getPayments', {})).filter(p=>p.projectId===pId);
-  let html = `<h2>FieldScan Pro Report</h2><div>Project: ${escapeHtml(proj.clientName)} (${pId})</div>`;
+
+  let html = `<h2>FieldScan Pro Report</h2><div>Project: ${escapeHtml(proj.clientName)} (${escapeHtml(pId)})</div>`;
   if (layout === 'inspection_report') {
-    html += `<h3>Inspections</h3>${inspections.map(i=>`<div>${i.inspectionDate}: ${i.areaInspected} - ${i.siteCondition}</div>`).join('')}`;
+    if (!inspections.length) {
+      html += `<h3>Inspections</h3><div>No inspections recorded for this project.</div>`;
+    } else {
+      html += `<h3>Inspections</h3>${inspections.map(i=>`<div>${escapeHtml(i.inspectionDate)}: ${escapeHtml(i.areaInspected)} - ${escapeHtml(i.siteCondition)}</div>`).join('')}`;
+    }
   } else if (layout === 'payment_summary') {
-    const totalIn = payments.filter(p=>p.paymentDirection==='Client Receipt').reduce((s,p)=>s+Number(p.amount),0);
-    const totalOut = payments.filter(p=>p.paymentDirection!=='Client Receipt').reduce((s,p)=>s+Number(p.amount),0);
+    const totalIn = payments.filter(p=>p.paymentDirection==='Client Receipt').reduce((s,p)=>s+Number(p.amount||0),0);
+    const totalOut = payments.filter(p=>p.paymentDirection!=='Client Receipt').reduce((s,p)=>s+Number(p.amount||0),0);
     html += `<h3>Payments</h3><div>Received: ₦${moneyValue(totalIn)}</div><div>Paid Out: ₦${moneyValue(totalOut)}</div><div>Balance: ₦${moneyValue(totalIn-totalOut)}</div>`;
   } else {
     html += `<h3>Master Dossier</h3><div>${inspections.length} inspections, ${payments.length} payments</div>`;

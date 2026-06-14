@@ -16,9 +16,8 @@ export function normalizeAttachments(files) { return files.filter(Boolean).join(
 export function idsMatch(a, b) { return String(a).trim() === String(b).trim(); }
 
 export async function compressImageToTargetLimit(base64, maxBytes = 190000) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
-    img.src = base64;
     img.onload = () => {
       const canvas = document.createElement('canvas');
       let w = img.width, h = img.height;
@@ -28,21 +27,40 @@ export async function compressImageToTargetLimit(base64, maxBytes = 190000) {
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       let quality = 0.8;
       let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > maxBytes && quality > 0.2) {
+      while (result.length > maxBytes && quality > 0.1) {
         quality -= 0.1;
         result = canvas.toDataURL('image/jpeg', quality);
       }
       resolve(result);
     };
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = base64;
   });
 }
 
+// Returns true if the string looks like a Google Drive URL (sharing link, etc.)
+// rather than a bare Drive file ID.
+function looksLikeUrl(str) {
+  return /^https?:\/\//i.test(str) || str.includes('/') || str.includes('=');
+}
+
 export function getDirectImageUrl(url) {
-  if (!url || url.startsWith('data:')) return url;
-  const match = url.match(/\/d\/(.+?)\//) || url.match(/id=([^&]+)/);
+  if (!url) return url;
+  if (url.startsWith('data:')) return url;
+
+  // Try to extract a file ID from known Google Drive URL formats
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (match && match[1]) {
     return `${GAS_URL}?id=${match[1]}&token=${AUTH_TOKEN}`;
   }
+
+  // If it's not a URL at all, treat it as a bare Drive file ID
+  // (this is what uploadImageToDrive() returns from the backend: file.getId())
+  if (!looksLikeUrl(url)) {
+    return `${GAS_URL}?id=${encodeURIComponent(url)}&token=${AUTH_TOKEN}`;
+  }
+
+  // Fallback: return as-is (e.g. some other external URL)
   return url;
 }
 
@@ -62,3 +80,11 @@ export function paymentDirectionOf(p) {
 }
 export function isClientReceipt(p) { return paymentDirectionOf(p) === 'Client Receipt'; }
 export function isPettyExpense(p) { return paymentDirectionOf(p) === 'Small Expense'; }
+
+// Generates a reasonably unique ID for new records created client-side.
+// Format: PREFIX-<timestamp36>-<random4>
+export function generateUniqueId(prefix) {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `${prefix}-${ts}-${rand}`.toUpperCase();
+}

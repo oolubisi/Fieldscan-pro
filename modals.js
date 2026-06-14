@@ -1,13 +1,16 @@
 // modals.js
-import { escapeHtml, escapeAttr, splitAttachments, normalizeAttachments, compressImageToTargetLimit, getDirectImageUrl, getGPSLocation, paymentDirectionOf } from './utils.js';
-import { callApi, getCache, getCurrentProjectId, setCache } from './api.js';
+import { escapeHtml, escapeAttr, splitAttachments, normalizeAttachments, compressImageToTargetLimit, getDirectImageUrl, getGPSLocation, paymentDirectionOf, isClientReceipt, isPettyExpense, generateUniqueId } from './utils.js';
+import { callApi, getCache, getCurrentProjectId, setCache, ApiError } from './api.js';
 import { refreshMasterDashboard, refreshVendorsListView } from './dashboard.js';
 import { loadProjectConsoleHub, loadInspectionListings, loadTakeOffListings, loadProgressTimelineFeed, loadWorkOrdersListings, loadPaymentsListings } from './console.js';
 
 let currentModalFiles = [];
 let currentAvatarPhoto = "";
 
+const PLACEHOLDER_AVATAR = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M12%2012c2.21%200%204-1.79%204-4s-1.79-4-4-4-4%201.79-4%204%201.79%204%204%204zm0%202c-2.67%200-8%201.34-8%204v2h16v-2c0-2.66-5.33-4-8-4z%22%2F%3E%3C%2Fsvg%3E';
+
 // ======================== ATTACHMENT PREVIEW HELPERS ========================
+
 export function populateModalInlineImageGalleryPreviews(containerId) {
   const box = document.getElementById(containerId);
   if (!box) return;
@@ -15,14 +18,15 @@ export function populateModalInlineImageGalleryPreviews(containerId) {
   box.style.display = 'flex';
   box.innerHTML = currentModalFiles.map((url, idx) => {
     const src = url.startsWith('data:') ? url : getDirectImageUrl(url);
-    return `<div style="position:relative; width:60px; height:60px;"><img src="${src}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid #000;"><div onclick="window.removeAttachmentByIndex(${idx}, '${containerId}')" style="position:absolute; top:-6px; right:-6px; background:red; color:white; border-radius:50%; width:20px; height:20px; text-align:center; line-height:18px; cursor:pointer;">&times;</div></div>`;
+    const isPdf = url.startsWith('data:application/pdf') || /\.pdf($|\?)/i.test(url);
+    const thumb = isPdf
+      ? `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#f0f0f0;border-radius:8px;border:1px solid #000;font-size:22px;"><i class="fas fa-file-pdf"></i></div>`
+      : `<img src="${escapeAttr(src)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid #000;">`;
+    return `<div style="position:relative; width:60px; height:60px;">${thumb}<div onclick="window.removeAttachmentByIndex(${idx}, '${containerId}')" style="position:absolute; top:-6px; right:-6px; background:red; color:white; border-radius:50%; width:20px; height:20px; text-align:center; line-height:18px; cursor:pointer;">&times;</div></div>`;
   }).join('');
 }
 
-export function removeAttachmentByIndex(idx, containerId) { 
-  currentModalFiles.splice(idx, 1); 
-  populateModalInlineImageGalleryPreviews(containerId); 
-}
+export function removeAttachmentByIndex(idx, containerId) { currentModalFiles.splice(idx,1); populateModalInlineImageGalleryPreviews(containerId); }
 
 export function processIncomingMultiAttachments(files, previewId) {
   if (!files.length) return;
@@ -30,21 +34,54 @@ export function processIncomingMultiAttachments(files, previewId) {
     const reader = new FileReader();
     reader.onload = async (ev) => {
       let data = ev.target.result;
-      if (!file.type.includes('pdf')) data = await compressImageToTargetLimit(data, 190000);
-      currentModalFiles.push(data);
-      populateModalInlineImageGalleryPreviews(previewId);
+      try {
+        if (!file.type.includes('pdf')) data = await compressImageToTargetLimit(data, 190000);
+        currentModalFiles.push(data);
+        populateModalInlineImageGalleryPreviews(previewId);
+      } catch (err) {
+        console.error('Failed to process attachment', err);
+        alert(`Could not process "${file.name}". Please try a different file.`);
+      }
+    };
+    reader.onerror = () => {
+      console.error('Failed to read file', file.name, reader.error);
+      alert(`Could not read "${file.name}". Please try again.`);
     };
     reader.readAsDataURL(file);
   });
 }
 
-export function clearVendorAvatarPhoto() { 
-  currentAvatarPhoto = ""; 
-  const img = document.getElementById('passport_frame_view'); 
-  if(img) img.src = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M12%2012c2.21%200%204-1.79%204-4s-1.79-4-4-4-4%201.79-4%204%201.79%204%204%204zm0%202c-2.67%200-8%201.34-8%204v2h16v-2c0-2.66-5.33-4-8-4z%22%2F%3E%3C%2Fsvg%3E'; 
-  const btn = document.getElementById('v_pass_remove_btn'); 
-  if(btn) btn.style.display = 'none'; 
+// ======================== VENDOR AVATAR HELPERS ========================
+
+export function clearVendorAvatarPhoto() {
+  currentAvatarPhoto = "";
+  const img = document.getElementById('passport_frame_view');
+  if (img) img.src = PLACEHOLDER_AVATAR;
+  const btn = document.getElementById('v_pass_remove_btn');
+  if (btn) btn.style.display = 'none';
 }
+
+export function handleVendorAvatarUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    try {
+      const compressed = await compressImageToTargetLimit(ev.target.result, 190000);
+      currentAvatarPhoto = compressed;
+      const img = document.getElementById('passport_frame_view');
+      if (img) img.src = compressed;
+      const btn = document.getElementById('v_pass_remove_btn');
+      if (btn) btn.style.display = 'block';
+    } catch (err) {
+      console.error('Failed to process avatar', err);
+      alert('Could not process that image. Please try a different photo.');
+    }
+  };
+  reader.onerror = () => alert('Could not read the selected image.');
+  reader.readAsDataURL(file);
+}
+
+// ======================== ID GENERATION ========================
 
 export function generateFrontendPreviewId(type) {
   const cache = getCache();
@@ -62,11 +99,30 @@ export function generateFrontendPreviewId(type) {
   return prefix + String(max+1).padStart(3, '0');
 }
 
-export function closeModal() { 
-  document.getElementById('modalOverlay').style.display = 'none'; 
+// ======================== MODAL OPEN/CLOSE ========================
+
+export function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+
+// Generic helper: disable the Save button while a request is in flight,
+// re-enable it (and restore its label) if the request fails so the user can
+// retry without re-opening the modal.
+async function submitWithGuard(submitBtn, fn) {
+  submitBtn.disabled = true;
+  submitBtn.innerText = "Saving...";
+  try {
+    await fn();
+  } catch (err) {
+    if (err instanceof ApiError) {
+      // callApi already alerted the user with the server's message
+    } else {
+      console.error(err);
+      alert("Something went wrong while saving. Please try again.");
+    }
+    submitBtn.disabled = false;
+    submitBtn.innerText = "Save";
+  }
 }
 
-// ======================== OPEN MODAL (FULL IMPLEMENTATION) ========================
 export async function openModal(type, editData = null) {
   const body = document.getElementById('modalBody');
   const submit = document.getElementById('modalSubmit');
@@ -83,7 +139,7 @@ export async function openModal(type, editData = null) {
   const labelStyle = 'style="display:block; font-weight:800; margin-top:12px; margin-bottom:4px;"';
   const largeInput = 'style="width:100%; padding:12px; font-size:16px;"';
 
-  // ---------- PROJECT ----------
+  // ==================== PROJECT ====================
   if (type === 'project') {
     title.innerText = isEdit ? "Edit Project" : "New Project";
     body.innerHTML = `
@@ -92,18 +148,12 @@ export async function openModal(type, editData = null) {
       <label ${labelStyle}>Site Location</label><input id="p_loc" value="${escapeAttr(isEdit?editData.siteLocation:'')}" ${largeInput}>
       <label ${labelStyle}>Client Phone (11 digits)</label><input id="p_phone" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${escapeAttr(isEdit?editData.clientPhone:'')}" ${largeInput}>
       <label ${labelStyle}>Client Email</label><input id="p_email" type="email" value="${escapeAttr(isEdit?editData.clientEmail:'')}" ${largeInput}>
-      <label ${labelStyle}>Status</label><select id="p_status" ${largeInput}>
-        <option value="Active" ${isEdit&&editData.projectStatus==='Active'?'selected':''}>Active</option>
-        <option value="In Planning" ${isEdit&&editData.projectStatus==='In Planning'?'selected':''}>In Planning</option>
-        <option value="Handed Over" ${isEdit&&editData.projectStatus==='Handed Over'?'selected':''}>Handed Over</option>
-        <option value="Declined" ${isEdit&&editData.projectStatus==='Declined'?'selected':''}>Declined</option>
-      </select>
+      <label ${labelStyle}>Status</label><select id="p_status" ${largeInput}><option value="Active" ${isEdit&&editData.projectStatus==='Active'?'selected':''}>Active</option><option value="In Planning" ${isEdit&&editData.projectStatus==='In Planning'?'selected':''}>In Planning</option><option value="Handed Over" ${isEdit&&editData.projectStatus==='Handed Over'?'selected':''}>Handed Over</option><option value="Declined" ${isEdit&&editData.projectStatus==='Declined'?'selected':''}>Declined</option></select>
       <label ${labelStyle}>Notes</label><textarea id="p_notes" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.notes:'')}</textarea>
     `;
     submit.onclick = () => {
       const phone = document.getElementById('p_phone').value.trim();
       if (phone && !/^\d{11}$/.test(phone)) { alert("Phone must be 11 digits"); return; }
-      submit.disabled = true; submit.innerText = "Saving...";
       const payload = {
         projectId: isEdit ? editData.projectId : generateFrontendPreviewId('project'),
         clientName: document.getElementById('p_client').value,
@@ -111,325 +161,395 @@ export async function openModal(type, editData = null) {
         clientPhone: phone,
         clientEmail: document.getElementById('p_email').value,
         projectStatus: document.getElementById('p_status').value,
-        notes: document.getElementById('p_notes').value
+        notes: document.getElementById('p_notes').value,
+        lastModified: Date.now()
       };
-      callApi(isEdit ? 'updateProject' : 'saveProject', payload).then(() => {
+      submitWithGuard(submit, async () => {
+        await callApi(isEdit ? 'updateProject' : 'saveProject', payload);
         closeModal();
-        refreshMasterDashboard();
+        await refreshMasterDashboard();
         if (isEdit) loadProjectConsoleHub(payload.projectId);
       });
     };
   }
-  // ---------- INSPECTION ----------
+
+  // ==================== INSPECTION ====================
   else if (type === 'inspection') {
-    const uniqueId = isEdit ? editData.inspectionId : "INS-" + Date.now();
     title.innerText = isEdit ? "Edit Inspection" : "New Inspection";
-    if (isEdit && editData.attachments) currentModalFiles = splitAttachments(editData.attachments);
+    const projectId = isEdit ? editData.projectId : getCurrentProjectId();
+    const inspectionId = isEdit ? editData.inspectionId : generateUniqueId('INS');
+    currentModalFiles = isEdit ? splitAttachments(editData.attachments) : [];
+
     body.innerHTML = `
-      <label ${labelStyle}>Type</label>
+      <label ${labelStyle}>Inspection Date</label><input id="i_date" type="date" value="${escapeAttr(isEdit ? toDateInputValue(editData.inspectionDate) : toDateInputValue())}" ${largeInput}>
+      <label ${labelStyle}>Inspection Type</label>
       <select id="i_type" ${largeInput}>
-        <option value="Initial Visit" ${isEdit && editData.inspectionType === 'Initial Visit' ? 'selected' : ''}>Initial Visit</option>
-        <option value="Site Condition" ${isEdit && editData.inspectionType === 'Site Condition' ? 'selected' : ''}>Site Condition</option>
-        <option value="Defect Check" ${isEdit && editData.inspectionType === 'Defect Check' ? 'selected' : ''}>Defect Check</option>
+        ${['Site Visit','Quality Check','Snag List','Pre-Handover','Other'].map(t => `<option value="${escapeAttr(t)}" ${isEdit && editData.inspectionType===t ? 'selected':''}>${escapeHtml(t)}</option>`).join('')}
       </select>
-      <label ${labelStyle}>Area Inspected</label><input id="i_area" value="${escapeAttr(isEdit?editData.areaInspected:'')}" ${largeInput}>
-      <label ${labelStyle}>Site Condition</label><textarea id="i_condition" rows="3" ${largeInput}>${escapeHtml(isEdit?editData.siteCondition:'')}</textarea>
-      <label ${labelStyle}>Recommendations</label><textarea id="i_rec" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.recommendations:'')}</textarea>
-      <div id="inspectionAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-      <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="i_photo" accept="image/*,application/pdf" multiple style="display:none"></label>
+      <label ${labelStyle}>Area Inspected</label><input id="i_area" value="${escapeAttr(isEdit?editData.areaInspected:'')}" ${largeInput} placeholder="e.g. Master Bedroom, Roof, Foundation">
+      <label ${labelStyle}>Site Condition</label><textarea id="i_condition" rows="3" ${largeInput} placeholder="Describe what you observed...">${escapeHtml(isEdit?editData.siteCondition:'')}</textarea>
+      <label ${labelStyle}>Recommendations</label><textarea id="i_recs" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.recommendations:'')}</textarea>
+      <label ${labelStyle}>Photos / Attachments</label>
+      <label class="icon-upload-label" for="i_files"><i class="fas fa-camera"></i></label>
+      <input type="file" id="i_files" accept="image/*,application/pdf" multiple style="display:none;">
+      <div id="i_files_preview" class="modal-preview-grid"></div>
     `;
-    if (currentModalFiles.length) populateModalInlineImageGalleryPreviews('inspectionAttachmentsPreviews');
-    document.getElementById('i_photo').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'inspectionAttachmentsPreviews');
-    submit.onclick = async () => {
-      submit.disabled = true; submit.innerText = "GPS...";
-      const gps = await getGPSLocation();
-      submit.innerText = "Saving...";
-      const condition = document.getElementById('i_condition').value + (gps !== "GPS Unavailable" ? `\n\n📍 ${gps}` : "");
+    populateModalInlineImageGalleryPreviews('i_files_preview');
+    document.getElementById('i_files').addEventListener('change', (e) => processIncomingMultiAttachments(e.target.files, 'i_files_preview'));
+
+    submit.onclick = () => {
+      if (!projectId) { alert("No project selected."); return; }
       const payload = {
-        inspectionId: uniqueId,
-        projectId: getCurrentProjectId(),
-        inspectionDate: new Date().toLocaleDateString(),
+        inspectionId,
+        projectId,
+        inspectionDate: document.getElementById('i_date').value,
         inspectionType: document.getElementById('i_type').value,
         areaInspected: document.getElementById('i_area').value,
-        siteCondition: condition,
-        recommendations: document.getElementById('i_rec').value,
-        attachments: normalizeAttachments(currentModalFiles)
+        siteCondition: document.getElementById('i_condition').value,
+        recommendations: document.getElementById('i_recs').value,
+        attachments: normalizeAttachments(currentModalFiles),
+        lastModified: Date.now()
       };
-      callApi(isEdit ? 'updateInspection' : 'saveInspection', payload).then(() => {
+      submitWithGuard(submit, async () => {
+        await callApi(isEdit ? 'updateInspection' : 'saveInspection', payload);
         closeModal();
-        loadInspectionListings();
+        await loadInspectionListings();
       });
     };
   }
-  // ---------- TAKE-OFF ----------
+
+  // ==================== TAKE-OFF ITEM ====================
   else if (type === 'takeoff_item') {
-    const uniqueId = isEdit ? editData.itemId : "TO-" + Date.now();
-    title.innerText = isEdit ? "Edit Take-Off" : "New Take-Off";
-    if (isEdit && editData.beforePhotoUrl) currentModalFiles = splitAttachments(editData.beforePhotoUrl);
+    title.innerText = isEdit ? "Edit Take-Off Item" : "New Take-Off Item";
+    const projectId = isEdit ? editData.projectId : getCurrentProjectId();
+    const itemId = isEdit ? editData.itemId : generateUniqueId('TKO');
+    currentModalFiles = isEdit ? splitAttachments(editData.beforePhotoUrl) : [];
+
     body.innerHTML = `
-      <label ${labelStyle}>Room/Area</label><input id="t_room" value="${escapeAttr(isEdit?editData.roomArea:'')}" ${largeInput}>
-      <label ${labelStyle}>Trade Category</label><input id="t_trade" value="${escapeAttr(isEdit?editData.tradeCategory:'')}" ${largeInput}>
-      <label ${labelStyle}>Description</label><input id="t_desc" value="${escapeAttr(isEdit?editData.description:'')}" ${largeInput}>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-        <input id="t_qty" placeholder="Quantity" value="${escapeAttr(isEdit?editData.quantity:'')}" ${largeInput}>
-        <select id="t_unit" ${largeInput}>
-          <option value="sqm" ${isEdit && editData.unit === 'sqm' ? 'selected' : ''}>sqm</option>
-          <option value="m" ${isEdit && editData.unit === 'm' ? 'selected' : ''}>m</option>
-          <option value="pcs" ${isEdit && editData.unit === 'pcs' ? 'selected' : ''}>pcs</option>
-        </select>
+      <label ${labelStyle}>Room / Area</label><input id="t_room" value="${escapeAttr(isEdit?editData.roomArea:'')}" ${largeInput} placeholder="e.g. Living Room">
+      <label ${labelStyle}>Trade Category</label>
+      <select id="t_trade" ${largeInput}>
+        ${['Civil/Structural','Electrical','Plumbing','Carpentry','Painting','Tiling','HVAC','Roofing','Other'].map(t => `<option value="${escapeAttr(t)}" ${isEdit && editData.tradeCategory===t ? 'selected':''}>${escapeHtml(t)}</option>`).join('')}
+      </select>
+      <label ${labelStyle}>Description</label><textarea id="t_desc" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.description:'')}</textarea>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;"><label ${labelStyle}>Quantity</label><input id="t_qty" type="number" step="any" value="${escapeAttr(isEdit?editData.quantity:'')}" ${largeInput}></div>
+        <div style="flex:1;"><label ${labelStyle}>Unit</label><input id="t_unit" value="${escapeAttr(isEdit?editData.unit:'')}" ${largeInput} placeholder="e.g. sqm, pcs, m"></div>
       </div>
-      <label ${labelStyle}>Remarks</label><textarea id="t_notes" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.scopeNotes:'')}</textarea>
-      <div id="takeoffAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-      <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="t_photo" accept="image/*" multiple style="display:none"></label>
-      ${isEdit ? `<button class="action-btn" id="t_delete_btn" style="background:var(--danger); margin-top:10px;">Delete</button>` : ''}
+      <label ${labelStyle}>Scope Notes</label><textarea id="t_notes" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.scopeNotes:'')}</textarea>
+      <label ${labelStyle}>Before Photo(s)</label>
+      <label class="icon-upload-label" for="t_files"><i class="fas fa-camera"></i></label>
+      <input type="file" id="t_files" accept="image/*,application/pdf" multiple style="display:none;">
+      <div id="t_files_preview" class="modal-preview-grid"></div>
     `;
-    if (currentModalFiles.length) populateModalInlineImageGalleryPreviews('takeoffAttachmentsPreviews');
-    document.getElementById('t_photo').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'takeoffAttachmentsPreviews');
+    populateModalInlineImageGalleryPreviews('t_files_preview');
+    document.getElementById('t_files').addEventListener('change', (e) => processIncomingMultiAttachments(e.target.files, 't_files_preview'));
+
     if (isEdit) {
-      document.getElementById('t_delete_btn').onclick = () => {
-        if (confirm("Delete this item?")) {
-          callApi('deleteTakeOffItem', { itemId: uniqueId }).then(() => {
-            closeModal();
-            loadTakeOffListings();
-          });
-        }
+      submit.insertAdjacentHTML('beforebegin', `<button id="modalDelete" class="action-btn" style="background:var(--danger); margin-top:10px;">Delete Item</button>`);
+      document.getElementById('modalDelete').onclick = () => {
+        if (!confirm("Delete this take-off item?")) return;
+        submitWithGuard(submit, async () => {
+          await callApi('deleteTakeOffItem', { itemId });
+          closeModal();
+          await loadTakeOffListings();
+        });
       };
     }
-    submit.onclick = async () => {
-      submit.disabled = true; submit.innerText = "GPS...";
-      const gps = await getGPSLocation();
-      submit.innerText = "Saving...";
-      const finalNotes = document.getElementById('t_notes').value + (gps !== "GPS Unavailable" ? `\n📍 ${gps}` : "");
+
+    submit.onclick = () => {
+      if (!projectId) { alert("No project selected."); return; }
       const payload = {
-        itemId: uniqueId,
-        projectId: getCurrentProjectId(),
+        itemId,
+        projectId,
         roomArea: document.getElementById('t_room').value,
         tradeCategory: document.getElementById('t_trade').value,
         description: document.getElementById('t_desc').value,
         quantity: document.getElementById('t_qty').value,
         unit: document.getElementById('t_unit').value,
         beforePhotoUrl: normalizeAttachments(currentModalFiles),
-        scopeNotes: finalNotes
+        scopeNotes: document.getElementById('t_notes').value,
+        lastModified: Date.now()
       };
-      callApi(isEdit ? 'updateTakeOffItem' : 'saveTakeOffItem', payload).then(() => {
+      submitWithGuard(submit, async () => {
+        await callApi(isEdit ? 'updateTakeOffItem' : 'saveTakeOffItem', payload);
         closeModal();
-        loadTakeOffListings();
+        await loadTakeOffListings();
       });
     };
   }
-  // ---------- PROGRESS ENTRY ----------
+
+  // ==================== PROGRESS ENTRY ====================
   else if (type === 'progress_entry') {
-    const uniqueId = "LOG-" + Date.now();
-    title.innerText = "Log Progress";
+    title.innerText = isEdit ? "Edit Progress Log" : "Log Progress";
+    const projectId = isEdit ? editData.projectId : getCurrentProjectId();
+    const logId = isEdit ? editData.logId : generateUniqueId('PRG');
+    currentModalFiles = isEdit ? splitAttachments(editData.progressPhotoUrl) : [];
+
     body.innerHTML = `
-      <label ${labelStyle}>Trade</label><input id="l_trade" ${largeInput}>
-      <label ${labelStyle}>Completion %</label>
-      <select id="l_pct" ${largeInput}>
-        <option>10</option><option>35</option><option>75</option><option>100</option>
+      <label ${labelStyle}>Trade Category</label>
+      <select id="g_trade" ${largeInput}>
+        ${['Civil/Structural','Electrical','Plumbing','Carpentry','Painting','Tiling','HVAC','Roofing','Other'].map(t => `<option value="${escapeAttr(t)}" ${isEdit && editData.tradeCategory===t ? 'selected':''}>${escapeHtml(t)}</option>`).join('')}
       </select>
-      <label ${labelStyle}>Comments</label><textarea id="l_comm" rows="3" ${largeInput}></textarea>
-      <div id="progressAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-      <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="l_photo" accept="image/*" multiple style="display:none"></label>
+      <label ${labelStyle}>Completion Percentage</label>
+      <input id="g_pct" type="number" min="0" max="100" value="${escapeAttr(isEdit?editData.completionPercentage:'0')}" ${largeInput}>
+      <label ${labelStyle}>Comment / Narrative</label>
+      <textarea id="g_comment" rows="3" ${largeInput} placeholder="Describe progress made...">${escapeHtml(isEdit?editData.commentNarrative:'')}</textarea>
+      <label ${labelStyle}>Progress Photo(s)</label>
+      <label class="icon-upload-label" for="g_files"><i class="fas fa-camera"></i></label>
+      <input type="file" id="g_files" accept="image/*,application/pdf" multiple style="display:none;">
+      <div id="g_files_preview" class="modal-preview-grid"></div>
     `;
-    document.getElementById('l_photo').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'progressAttachmentsPreviews');
-    submit.onclick = async () => {
-      submit.disabled = true; submit.innerText = "GPS...";
-      const gps = await getGPSLocation();
-      submit.innerText = "Saving...";
+    populateModalInlineImageGalleryPreviews('g_files_preview');
+    document.getElementById('g_files').addEventListener('change', (e) => processIncomingMultiAttachments(e.target.files, 'g_files_preview'));
+
+    submit.onclick = () => {
+      if (!projectId) { alert("No project selected."); return; }
+      const pct = Number(document.getElementById('g_pct').value);
+      if (isNaN(pct) || pct < 0 || pct > 100) { alert("Completion percentage must be between 0 and 100."); return; }
       const payload = {
-        logId: uniqueId,
-        projectId: getCurrentProjectId(),
-        tradeCategory: document.getElementById('l_trade').value,
-        completionPercentage: document.getElementById('l_pct').value,
-        commentNarrative: document.getElementById('l_comm').value + (gps !== "GPS Unavailable" ? `\n📍 ${gps}` : ""),
-        progressPhotoUrl: normalizeAttachments(currentModalFiles)
+        logId,
+        projectId,
+        tradeCategory: document.getElementById('g_trade').value,
+        completionPercentage: pct,
+        commentNarrative: document.getElementById('g_comment').value,
+        progressPhotoUrl: normalizeAttachments(currentModalFiles),
+        lastModified: Date.now()
       };
-      callApi('saveProgressLog', payload).then(() => {
+      submitWithGuard(submit, async () => {
+        await callApi('saveProgressLog', payload);
         closeModal();
-        loadProgressTimelineFeed();
+        await loadProgressTimelineFeed();
       });
     };
   }
-  // ---------- VENDOR ----------
+
+  // ==================== VENDOR ====================
   else if (type === 'vendor') {
-    const uniqueId = isEdit ? editData.vendorId : "VND-" + Date.now();
     title.innerText = isEdit ? "Edit Vendor" : "New Vendor";
-    if (isEdit) { currentAvatarPhoto = editData.passport; if(editData.attachments) currentModalFiles = splitAttachments(editData.attachments); }
+    const vendorId = isEdit ? editData.vendorId : generateUniqueId('VND');
+    currentModalFiles = isEdit ? splitAttachments(editData.attachments) : [];
+    currentAvatarPhoto = isEdit && editData.passport ? editData.passport : "";
+    const avatarSrc = currentAvatarPhoto
+      ? (currentAvatarPhoto.startsWith('data:') ? currentAvatarPhoto : getDirectImageUrl(currentAvatarPhoto))
+      : PLACEHOLDER_AVATAR;
+
     body.innerHTML = `
       <div class="passport-frame-container">
-        <img id="passport_frame_view" src="${getDirectImageUrl(currentAvatarPhoto) || 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M12%2012c2.21%200%204-1.79%204-4s-1.79-4-4-4-4%201.79-4%204%201.79%204%204%204zm0%202c-2.67%200-8%201.34-8%204v2h16v-2c0-2.66-5.33-4-8-4z%22%2F%3E%3C%2Fsvg%3E'}" style="width:100%; height:100%; object-fit:cover;">
-        <label style="position:absolute; bottom:0; right:0; background:#000; color:white; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
-          <i class="fas fa-camera"></i>
-          <input type="file" id="v_pass" accept="image/*" style="display:none">
-        </label>
-        <div id="v_pass_remove" onclick="window.clearVendorAvatarPhoto()" style="position:absolute; top:0; right:0; background:red; color:white; border-radius:50%; width:22px; text-align:center; cursor:pointer;">&times;</div>
+        <img id="passport_frame_view" src="${escapeAttr(avatarSrc)}" style="width:100%; height:100%; object-fit:cover;">
       </div>
-      <label ${labelStyle}>Company</label><input id="v_comp" value="${escapeAttr(isEdit?editData.company:'')}" ${largeInput}>
-      <label ${labelStyle}>Trade</label><input id="v_trade" value="${escapeAttr(isEdit?editData.trade:'')}" ${largeInput}>
-      <label ${labelStyle}>Contact Person</label><input id="v_contact" value="${escapeAttr(isEdit?editData.contactName:'')}" ${largeInput}>
+      <div style="display:flex; gap:10px; justify-content:center; margin-bottom:10px;">
+        <label class="icon-upload-label" for="v_passport_file" style="margin:0;"><i class="fas fa-camera"></i></label>
+        <input type="file" id="v_passport_file" accept="image/*" style="display:none;">
+        <button type="button" id="v_pass_remove_btn" class="action-btn" style="width:auto; padding:0 16px; background:var(--danger); display:${currentAvatarPhoto ? 'block':'none'};" onclick="window.clearVendorAvatarPhoto()">Remove</button>
+      </div>
+      <label ${labelStyle}>Company / Vendor Name</label><input id="v_company" value="${escapeAttr(isEdit?editData.company:'')}" ${largeInput}>
+      <label ${labelStyle}>Trade</label><input id="v_trade" value="${escapeAttr(isEdit?editData.trade:'')}" ${largeInput} placeholder="e.g. Plumbing, Electrical">
+      <label ${labelStyle}>Contact Name</label><input id="v_contact" value="${escapeAttr(isEdit?editData.contactName:'')}" ${largeInput}>
       <label ${labelStyle}>Phone 1 (11 digits)</label><input id="v_phone1" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${escapeAttr(isEdit?editData.phone1:'')}" ${largeInput}>
-      <label ${labelStyle}>Phone 2</label><input id="v_phone2" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${escapeAttr(isEdit?editData.phone2:'')}" ${largeInput}>
+      <label ${labelStyle}>Phone 2 (optional)</label><input id="v_phone2" type="tel" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${escapeAttr(isEdit?editData.phone2:'')}" ${largeInput}>
       <label ${labelStyle}>Email</label><input id="v_email" type="email" value="${escapeAttr(isEdit?editData.email:'')}" ${largeInput}>
-      <div id="vendorAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-      <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="v_files" accept="image/*,application/pdf" multiple style="display:none"></label>
-      ${isEdit ? `<button class="action-btn" id="v_delete_btn" style="background:var(--danger); margin-top:10px;">Delete</button>` : ''}
+      <label ${labelStyle}>Other Attachments (certs, ID, etc.)</label>
+      <label class="icon-upload-label" for="v_files"><i class="fas fa-paperclip"></i></label>
+      <input type="file" id="v_files" accept="image/*,application/pdf" multiple style="display:none;">
+      <div id="v_files_preview" class="modal-preview-grid"></div>
+      ${isEdit ? `<label ${labelStyle}>Archived</label><select id="v_archived" ${largeInput}><option value="No" ${editData.archived!=='Yes'?'selected':''}>No</option><option value="Yes" ${editData.archived==='Yes'?'selected':''}>Yes</option></select>` : ''}
     `;
-    if (currentModalFiles.length) populateModalInlineImageGalleryPreviews('vendorAttachmentsPreviews');
-    document.getElementById('v_pass').onchange = (e) => {
-      const f = e.target.files[0];
-      if (f) {
-        const r = new FileReader();
-        r.onload = async (ev) => {
-          currentAvatarPhoto = await compressImageToTargetLimit(ev.target.result, 190000);
-          document.getElementById('passport_frame_view').src = currentAvatarPhoto;
-          document.getElementById('v_pass_remove').style.display = 'block';
-        };
-        r.readAsDataURL(f);
-      }
-    };
-    document.getElementById('v_files').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'vendorAttachmentsPreviews');
+    populateModalInlineImageGalleryPreviews('v_files_preview');
+    document.getElementById('v_files').addEventListener('change', (e) => processIncomingMultiAttachments(e.target.files, 'v_files_preview'));
+    document.getElementById('v_passport_file').addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) handleVendorAvatarUpload(e.target.files[0]);
+    });
+
     if (isEdit) {
-      document.getElementById('v_delete_btn').onclick = () => {
-        if (confirm("Delete vendor?")) {
-          callApi('deleteVendor', { vendorId: uniqueId }).then(() => {
-            closeModal();
-            refreshVendorsListView();
-          });
-        }
+      submit.insertAdjacentHTML('beforebegin', `<button id="modalDelete" class="action-btn" style="background:var(--danger); margin-top:10px;">Delete Vendor</button>`);
+      document.getElementById('modalDelete').onclick = () => {
+        if (!confirm("Delete this vendor? This cannot be undone.")) return;
+        submitWithGuard(submit, async () => {
+          await callApi('deleteVendor', { vendorId });
+          closeModal();
+          await refreshVendorsListView();
+        });
       };
     }
+
     submit.onclick = () => {
-      const p1 = document.getElementById('v_phone1').value.trim();
-      const p2 = document.getElementById('v_phone2').value.trim();
-      if (p1 && !/^\d{11}$/.test(p1)) { alert("Phone 1 must be 11 digits"); return; }
-      if (p2 && !/^\d{11}$/.test(p2)) { alert("Phone 2 must be 11 digits"); return; }
-      submit.disabled = true; submit.innerText = "Saving...";
+      const phone1 = document.getElementById('v_phone1').value.trim();
+      const phone2 = document.getElementById('v_phone2').value.trim();
+      if (phone1 && !/^\d{11}$/.test(phone1)) { alert("Phone 1 must be 11 digits"); return; }
+      if (phone2 && !/^\d{11}$/.test(phone2)) { alert("Phone 2 must be 11 digits"); return; }
+      const company = document.getElementById('v_company').value.trim();
+      if (!company) { alert("Company / Vendor name is required."); return; }
       const payload = {
-        vendorId: uniqueId,
-        company: document.getElementById('v_comp').value,
+        vendorId,
+        company,
         trade: document.getElementById('v_trade').value,
         contactName: document.getElementById('v_contact').value,
-        phone1: p1,
-        phone2: p2,
+        phone1, phone2,
         email: document.getElementById('v_email').value,
         passport: currentAvatarPhoto,
         attachments: normalizeAttachments(currentModalFiles),
-        archived: "No"
+        lastModified: Date.now()
       };
-      callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => {
+      if (isEdit) payload.archived = document.getElementById('v_archived').value;
+      submitWithGuard(submit, async () => {
+        await callApi(isEdit ? 'updateVendor' : 'saveVendor', payload);
         closeModal();
-        refreshVendorsListView();
+        await refreshVendorsListView();
       });
     };
   }
-  // ---------- WORK ORDER ----------
+
+  // ==================== WORK ORDER ====================
   else if (type === 'workorder') {
-    const uniqueId = isEdit ? editData.workOrderId : generateFrontendPreviewId('workorder');
     title.innerText = isEdit ? "Edit Work Order" : "New Work Order";
-    if (isEdit && editData.attachments) currentModalFiles = splitAttachments(editData.attachments);
-    const vendors = getCache().vendors || [];
+    const projectId = isEdit ? editData.projectId : getCurrentProjectId();
+    const workOrderId = isEdit ? editData.workOrderId : null; // server assigns on create
+    currentModalFiles = isEdit ? splitAttachments(editData.attachments) : [];
+
+    const cache = getCache();
+    const vendors = cache.vendors || [];
+    const vendorOptions = vendors.map(v => `<option value="${escapeAttr(v.vendorId)}" ${isEdit && editData.vendorId===v.vendorId ? 'selected':''}>${escapeHtml(v.company)} (${escapeHtml(v.trade)})</option>`).join('');
+
     body.innerHTML = `
-      <label ${labelStyle}>ID</label><input value="${uniqueId}" disabled style="${largeInput} background:#f0f0f0;">
       <label ${labelStyle}>Vendor</label>
-      <select id="wo_vendor" ${largeInput}>
-        ${vendors.map(v => `<option value="${v.vendorId}" ${isEdit && v.vendorId === editData.vendorId ? 'selected' : ''}>${escapeHtml(v.company)}</option>`).join('')}
+      <select id="w_vendor" ${largeInput}>
+        <option value="">-- Select Vendor --</option>
+        ${vendorOptions}
       </select>
-      <label ${labelStyle}>Description</label><textarea id="wo_desc" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.description:'')}</textarea>
-      <label ${labelStyle}>Amount (₦)</label><input id="wo_amount" type="number" value="${escapeAttr(isEdit?editData.amount:'')}" ${largeInput}>
+      <label ${labelStyle}>Description</label><textarea id="w_desc" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.description:'')}</textarea>
+      <label ${labelStyle}>Amount (₦)</label><input id="w_amount" type="number" step="any" value="${escapeAttr(isEdit?editData.amount:'')}" ${largeInput}>
       <label ${labelStyle}>Status</label>
-      <select id="wo_status" ${largeInput}>
-        <option value="Pending" ${isEdit && editData.status === 'Pending' ? 'selected' : ''}>Pending</option>
-        <option value="Active" ${isEdit && editData.status === 'Active' ? 'selected' : ''}>Active</option>
-        <option value="Completed" ${isEdit && editData.status === 'Completed' ? 'selected' : ''}>Completed</option>
+      <select id="w_status" ${largeInput}>
+        ${['Pending','In Progress','Completed','Cancelled'].map(s => `<option value="${escapeAttr(s)}" ${isEdit && editData.status===s ? 'selected':''}>${escapeHtml(s)}</option>`).join('')}
       </select>
-      <div id="woAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-      <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="wo_files" accept="image/*,application/pdf" multiple style="display:none"></label>
+      <label ${labelStyle}>Attachments</label>
+      <label class="icon-upload-label" for="w_files"><i class="fas fa-paperclip"></i></label>
+      <input type="file" id="w_files" accept="image/*,application/pdf" multiple style="display:none;">
+      <div id="w_files_preview" class="modal-preview-grid"></div>
     `;
-    if (currentModalFiles.length) populateModalInlineImageGalleryPreviews('woAttachmentsPreviews');
-    document.getElementById('wo_files').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'woAttachmentsPreviews');
+    populateModalInlineImageGalleryPreviews('w_files_preview');
+    document.getElementById('w_files').addEventListener('change', (e) => processIncomingMultiAttachments(e.target.files, 'w_files_preview'));
+    if (!vendors.length) {
+      const note = document.createElement('p');
+      note.style.fontSize = '12px';
+      note.style.color = 'var(--muted)';
+      note.innerText = 'No vendors loaded yet — visit the Vendors tab first if the list above is empty.';
+      body.insertBefore(note, body.firstChild);
+    }
+
     submit.onclick = () => {
-      const vendorId = document.getElementById('wo_vendor').value;
-      if (!vendorId) { alert("Select a vendor"); return; }
-      submit.disabled = true; submit.innerText = "Saving...";
+      if (!projectId) { alert("No project selected."); return; }
+      const vendorId = document.getElementById('w_vendor').value;
+      if (!vendorId) { alert("Please select a vendor."); return; }
       const payload = {
-        workOrderId: uniqueId,
-        projectId: getCurrentProjectId(),
-        vendorId: vendorId,
-        description: document.getElementById('wo_desc').value,
-        amount: document.getElementById('wo_amount').value,
-        status: document.getElementById('wo_status').value,
-        attachments: normalizeAttachments(currentModalFiles)
+        workOrderId: isEdit ? workOrderId : undefined,
+        projectId,
+        vendorId,
+        description: document.getElementById('w_desc').value,
+        amount: document.getElementById('w_amount').value,
+        status: document.getElementById('w_status').value,
+        attachments: normalizeAttachments(currentModalFiles),
+        lastModified: Date.now()
       };
-      callApi(isEdit ? 'updateWorkOrder' : 'saveWorkOrder', payload).then(() => {
+      submitWithGuard(submit, async () => {
+        await callApi(isEdit ? 'updateWorkOrder' : 'saveWorkOrder', payload);
         closeModal();
-        loadWorkOrdersListings();
+        await loadWorkOrdersListings();
       });
     };
   }
-  // ---------- PAYMENT ----------
+
+  // ==================== PAYMENT ====================
   else if (type === 'payment') {
-    title.innerText = isEdit ? "Edit Payment" : "New Payment";
-    if (isEdit && editData.attachments) currentModalFiles = splitAttachments(editData.attachments);
+    title.innerText = isEdit ? "Edit Payment" : "Log Payment";
+    const projectId = isEdit ? editData.projectId : getCurrentProjectId();
+    const paymentId = isEdit ? editData.paymentId : null; // server assigns on create
+    currentModalFiles = isEdit ? splitAttachments(editData.attachments) : [];
+
+    const directions = ['Client Receipt','Outgoing Payment','Small Expense'];
+    const currentDirection = isEdit ? paymentDirectionOf(editData) : 'Outgoing Payment';
+
     body.innerHTML = `
-      <label ${labelStyle}>ID</label><input value="${isEdit ? editData.paymentId : "Auto-generated (PAY-XXXXX)"}" disabled style="${largeInput} background:#f0f0f0;">
+      <label ${labelStyle}>Payment Date</label><input id="pm_date" type="date" value="${escapeAttr(isEdit ? toDateInputValue(editData.paymentDate) : toDateInputValue())}" ${largeInput}>
       <label ${labelStyle}>Direction</label>
-      <select id="pay_dir" ${largeInput}>
-        <option value="Client Receipt" ${isEdit && paymentDirectionOf(editData) === 'Client Receipt' ? 'selected' : ''}>Client Receipt</option>
-        <option value="Outgoing Payment" ${(!isEdit || paymentDirectionOf(editData) === 'Outgoing Payment') ? 'selected' : ''}>Outgoing Payment</option>
-        <option value="Small Expense" ${isEdit && paymentDirectionOf(editData) === 'Small Expense' ? 'selected' : ''}>Small Expense</option>
+      <select id="pm_direction" ${largeInput}>
+        ${directions.map(d => `<option value="${escapeAttr(d)}" ${currentDirection===d ? 'selected':''}>${escapeHtml(d)}</option>`).join('')}
       </select>
-      <label ${labelStyle}>Payee</label><input id="pay_payee" value="${escapeAttr(isEdit?editData.payee:'')}" ${largeInput}>
-      <label ${labelStyle}>Category</label>
-      <select id="pay_cat" ${largeInput}>
-        <option value="">--</option>
-        <option value="Labour" ${isEdit && editData.expenseCategory === 'Labour' ? 'selected' : ''}>Labour</option>
-        <option value="Materials" ${isEdit && editData.expenseCategory === 'Materials' ? 'selected' : ''}>Materials</option>
-        <option value="Transport" ${isEdit && editData.expenseCategory === 'Transport' ? 'selected' : ''}>Transport</option>
-        <option value="Misc" ${isEdit && editData.expenseCategory === 'Misc' ? 'selected' : ''}>Misc</option>
+      <label ${labelStyle}>Payee / Source</label><input id="pm_payee" value="${escapeAttr(isEdit?editData.payee:'')}" ${largeInput} placeholder="e.g. Client, Vendor name">
+      <label ${labelStyle}>Expense Category (if applicable)</label><input id="pm_category" value="${escapeAttr(isEdit?editData.expenseCategory:'')}" ${largeInput} placeholder="e.g. Materials, Transport">
+      <label ${labelStyle}>Amount (₦)</label><input id="pm_amount" type="number" step="any" value="${escapeAttr(isEdit?editData.amount:'')}" ${largeInput}>
+      <label ${labelStyle}>Payment Method</label>
+      <select id="pm_method" ${largeInput}>
+        ${['Cash','Bank Transfer','Cheque','Card','Mobile Money','Other'].map(m => `<option value="${escapeAttr(m)}" ${isEdit && editData.paymentMethod===m ? 'selected':''}>${escapeHtml(m)}</option>`).join('')}
       </select>
-      <label ${labelStyle}>Amount (₦)</label><input id="pay_amount" type="number" step="0.01" value="${escapeAttr(isEdit?editData.amount:'')}" ${largeInput}>
-      <label ${labelStyle}>Method</label>
-      <select id="pay_method" ${largeInput}>
-        <option value="Cash" ${isEdit && editData.paymentMethod === 'Cash' ? 'selected' : ''}>Cash</option>
-        <option value="Transfer" ${(!isEdit || editData.paymentMethod === 'Transfer') ? 'selected' : ''}>Transfer</option>
-        <option value="POS" ${isEdit && editData.paymentMethod === 'POS' ? 'selected' : ''}>POS</option>
-      </select>
+      <label ${labelStyle}>Reference / Receipt No.</label><input id="pm_ref" value="${escapeAttr(isEdit?editData.referenceId:'')}" ${largeInput}>
       <label ${labelStyle}>Status</label>
-      <select id="pay_status" ${largeInput}>
-        <option value="Pending" ${isEdit && editData.status === 'Pending' ? 'selected' : ''}>Pending</option>
-        <option value="Cleared" ${isEdit && editData.status === 'Cleared' ? 'selected' : ''}>Cleared</option>
+      <select id="pm_status" ${largeInput}>
+        ${['Logged','Cleared','Pending'].map(s => `<option value="${escapeAttr(s)}" ${isEdit && editData.status===s ? 'selected':''}>${escapeHtml(s)}</option>`).join('')}
       </select>
-      <label ${labelStyle}>Notes</label><textarea id="pay_notes" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.notes:'')}</textarea>
-      <div id="paymentAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
-      <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="pay_files" accept="image/*,application/pdf" multiple style="display:none"></label>
+      <label ${labelStyle}>Notes</label><textarea id="pm_notes" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.notes:'')}</textarea>
+      <label ${labelStyle}>Receipt / Attachments</label>
+      <label class="icon-upload-label" for="pm_files"><i class="fas fa-receipt"></i></label>
+      <input type="file" id="pm_files" accept="image/*,application/pdf" multiple style="display:none;">
+      <div id="pm_files_preview" class="modal-preview-grid"></div>
     `;
-    if (currentModalFiles.length) populateModalInlineImageGalleryPreviews('paymentAttachmentsPreviews');
-    document.getElementById('pay_files').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'paymentAttachmentsPreviews');
+    populateModalInlineImageGalleryPreviews('pm_files_preview');
+    document.getElementById('pm_files').addEventListener('change', (e) => processIncomingMultiAttachments(e.target.files, 'pm_files_preview'));
+
     submit.onclick = () => {
-      const amount = document.getElementById('pay_amount').value;
-      if (!amount || amount <= 0) { alert("Enter a valid amount"); return; }
-      submit.disabled = true; submit.innerText = "Saving...";
+      if (!projectId) { alert("No project selected."); return; }
+      const amount = Number(document.getElementById('pm_amount').value);
+      if (!amount || amount <= 0) { alert("Please enter a valid amount."); return; }
       const payload = {
-        paymentId: isEdit ? editData.paymentId : null,
-        projectId: getCurrentProjectId(),
-        paymentDate: new Date().toLocaleDateString(),
-        paymentDirection: document.getElementById('pay_dir').value,
-        payee: document.getElementById('pay_payee').value,
-        expenseCategory: document.getElementById('pay_cat').value,
-        referenceId: "",
-        amount: amount,
-        paymentMethod: document.getElementById('pay_method').value,
-        status: document.getElementById('pay_status').value,
-        notes: document.getElementById('pay_notes').value,
-        attachments: normalizeAttachments(currentModalFiles)
+        paymentId: isEdit ? paymentId : undefined,
+        projectId,
+        paymentDate: document.getElementById('pm_date').value,
+        paymentDirection: document.getElementById('pm_direction').value,
+        payee: document.getElementById('pm_payee').value,
+        expenseCategory: document.getElementById('pm_category').value,
+        referenceId: document.getElementById('pm_ref').value,
+        amount,
+        paymentMethod: document.getElementById('pm_method').value,
+        status: document.getElementById('pm_status').value,
+        notes: document.getElementById('pm_notes').value,
+        attachments: normalizeAttachments(currentModalFiles),
+        lastModified: Date.now()
       };
-      callApi(isEdit ? 'updatePayment' : 'savePayment', payload).then(() => {
+      submitWithGuard(submit, async () => {
+        await callApi(isEdit ? 'updatePayment' : 'savePayment', payload);
         closeModal();
-        loadPaymentsListings();
+        await loadPaymentsListings();
       });
     };
+  }
+
+  else {
+    title.innerText = "Unknown";
+    body.innerHTML = `<p>Unsupported modal type: ${escapeHtml(type)}</p>`;
+    submit.style.display = 'none';
   }
 }
 
-// ======================== EXPORTS ========================
+// ======================== SHARED HELPERS ========================
+
+// Converts a dd/MM/yyyy (server format) or empty string to yyyy-MM-dd for <input type="date">.
+// If given an already-ISO date or nothing, falls back sensibly.
+function toDateInputValue(dateStr) {
+  if (!dateStr) {
+    const today = new Date();
+    return today.toISOString().slice(0, 10);
+  }
+  // dd/MM/yyyy -> yyyy-MM-dd
+  const ddmmyyyy = String(dateStr).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyy) {
+    const [, d, m, y] = ddmmyyyy;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  // already yyyy-MM-dd
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.slice(0, 10);
+  const today = new Date();
+  return today.toISOString().slice(0, 10);
+}
+
 export { removeAttachmentByIndex, clearVendorAvatarPhoto };

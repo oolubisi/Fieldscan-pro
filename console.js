@@ -38,6 +38,32 @@ export function switchConsoleSegment(seg) {
   if (seg === 'payments') loadPaymentsListings();
 }
 
+// ======================== ITEM LOOKUP HELPERS ========================
+// Used instead of inlining JSON.stringify(item) into onclick attributes,
+// which breaks if any field contains a quote, apostrophe, or other
+// HTML-sensitive character.
+
+export function openInspectionById(id) {
+  const cache = getCache();
+  const item = (cache.inspections || []).find(i => i.inspectionId === id);
+  if (item) openModal('inspection', item);
+}
+export function openTakeOffById(id) {
+  const cache = getCache();
+  const item = (cache.takeoffs || []).find(i => i.itemId === id);
+  if (item) openModal('takeoff_item', item);
+}
+export function openWorkOrderById(id) {
+  const cache = getCache();
+  const item = (cache.workorders || []).find(w => w.workOrderId === id);
+  if (item) openModal('workorder', item);
+}
+export function openPaymentById(id) {
+  const cache = getCache();
+  const item = (cache.payments || []).find(p => p.paymentId === id);
+  if (item) openModal('payment', item);
+}
+
 // ======================== INSPECTIONS ========================
 export async function loadInspectionListings() {
   const container = document.getElementById('console-inspections-list');
@@ -53,7 +79,7 @@ export async function loadInspectionListings() {
     return;
   }
   container.innerHTML = projectItems.map(i => `
-    <div class="card" onclick="window.openModal('inspection', ${JSON.stringify(i).replace(/"/g, '&quot;')})" style="cursor:pointer;">
+    <div class="card" data-id="${escapeAttr(i.inspectionId)}" onclick="window.openInspectionById(this.dataset.id)" style="cursor:pointer;">
       <strong>${escapeHtml(i.inspectionType)}</strong> - ${escapeHtml(i.areaInspected)}<br>
       <small>${escapeHtml(i.inspectionDate)}</small>
       <p>${escapeHtml(i.siteCondition)}</p>
@@ -76,7 +102,7 @@ export async function loadTakeOffListings() {
     return;
   }
   container.innerHTML = projectItems.map(i => `
-    <div class="card" onclick="window.openModal('takeoff_item', ${JSON.stringify(i).replace(/"/g, '&quot;')})" style="cursor:pointer;">
+    <div class="card" data-id="${escapeAttr(i.itemId)}" onclick="window.openTakeOffById(this.dataset.id)" style="cursor:pointer;">
       <strong>${escapeHtml(i.roomArea)}</strong> | ${escapeHtml(i.tradeCategory)}<br>
       ${escapeHtml(i.description)}<br>
       <strong>${escapeHtml(i.quantity)} ${escapeHtml(i.unit)}</strong>
@@ -121,9 +147,13 @@ export async function loadWorkOrdersListings() {
     container.innerHTML = `<p style="text-align:center;padding:20px;">No work orders.</p>`;
     return;
   }
+  // Build a vendorId -> company name map for nicer display
+  const vendorMap = {};
+  (cache.allVendors || cache.vendors || []).forEach(v => { vendorMap[v.vendorId] = v.company; });
+
   container.innerHTML = projectOrders.map(w => `
-    <div class="card" onclick="window.openModal('workorder', ${JSON.stringify(w).replace(/"/g, '&quot;')})" style="cursor:pointer;">
-      <strong>${escapeHtml(w.vendorId)}</strong><br>
+    <div class="card" data-id="${escapeAttr(w.workOrderId)}" onclick="window.openWorkOrderById(this.dataset.id)" style="cursor:pointer;">
+      <strong>${escapeHtml(vendorMap[w.vendorId] || w.vendorId)}</strong><br>
       ${escapeHtml(w.description)}<br>
       ₦${moneyValue(w.amount)}<br>
       Status: ${escapeHtml(w.status)}
@@ -135,25 +165,25 @@ export async function loadWorkOrdersListings() {
 export async function loadPaymentsListings() {
   const container = document.getElementById('console-payments-list');
   container.innerHTML = `<p style="text-align:center; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Loading payment records...</p>`;
-  
+
   const payments = await callApi('getPayments', {});
   const cache = getCache();
   cache.payments = payments || [];
   setCache(cache);
-  
+
   const projectId = getCurrentProjectId();
   const projectPayments = cache.payments.filter(p => p.projectId === projectId);
-  
+
   if (projectPayments.length === 0) {
     container.innerHTML = `<p style="color:var(--muted); font-style:italic; text-align:center; padding:20px; font-size:14px;">No payment records logged.</p>`;
     return;
   }
-  
+
   const totalReceived = projectPayments.filter(isClientReceipt).reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const totalExpenses = projectPayments.filter(p => !isClientReceipt(p)).reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const smallExpenses = projectPayments.filter(isPettyExpense).reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const netBalance = totalReceived - totalExpenses;
-  
+
   // Build totals card with safe flex + word‑break
   const totalsHtml = `
     <div class="card" style="background:var(--card); border-color:#000; padding:12px;">
@@ -181,12 +211,12 @@ export async function loadPaymentsListings() {
       </div>
     </div>
   `;
-  
+
   const paymentsHtml = projectPayments.map(p => {
     const direction = paymentDirectionOf(p);
     const incoming = isClientReceipt(p);
     return `
-      <div class="card" onclick="window.openModal('payment', ${JSON.stringify(p).replace(/"/g, '&quot;')})" style="background:#fff; border-color:#000; border-left:6px solid ${incoming ? 'var(--success)' : 'var(--danger)'}; cursor:pointer;">
+      <div class="card" data-id="${escapeAttr(p.paymentId)}" onclick="window.openPaymentById(this.dataset.id)" style="background:#fff; border-color:#000; border-left:6px solid ${incoming ? 'var(--success)' : 'var(--danger)'}; cursor:pointer;">
         <div style="display:flex; justify-content:space-between; align-items:start; gap:10px;">
           <div>
             <strong style="font-size:18px;">${escapeHtml(p.payee || 'Payment')}</strong><br>
@@ -200,6 +230,6 @@ export async function loadPaymentsListings() {
       </div>
     `;
   }).join('');
-  
+
   container.innerHTML = totalsHtml + paymentsHtml;
 }

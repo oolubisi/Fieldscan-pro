@@ -25,8 +25,22 @@ export const MUTATION_MAP = {
 };
 
 function backupKey(action) { return `fb_${action}`; }
-export function readBackup(action, fallback = []) { const raw = localStorage.getItem(backupKey(action)); return raw ? JSON.parse(raw) : fallback; }
-export function writeBackup(action, value) { localStorage.setItem(backupKey(action), JSON.stringify(value)); }
+export function readBackup(action, fallback = []) {
+  try {
+    const raw = localStorage.getItem(backupKey(action));
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    console.warn("Failed to read backup for", action, e);
+    return fallback;
+  }
+}
+export function writeBackup(action, value) {
+  try {
+    localStorage.setItem(backupKey(action), JSON.stringify(value));
+  } catch (e) {
+    console.warn("Failed to write backup for", action, e);
+  }
+}
 
 export function recomputeLocalStats() {
   const vendors = readBackup('getVendors', []);

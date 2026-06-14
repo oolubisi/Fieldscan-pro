@@ -1,21 +1,4 @@
 // app.js
-// Immediate attach of critical functions (synchronous)
-const tempStubs = {
-  showPage: (page) => { console.warn("App loading, showing page later", page); },
-  loadProjectConsoleHub: () => { alert("Still loading, please wait..."); },
-  openModal: () => { alert("Still loading..."); },
-  closeModal: () => {},
-  triggerManualSync: () => {},
-  refreshAllData: () => {},
-  handleReportOptionsPopulation: () => {},
-  compileFieldReport: () => {},
-  switchConsoleSegment: () => {},
-  triggerEditProjectProfile: () => {},
-  removeAttachmentByIndex: () => {},
-  clearVendorAvatarPhoto: () => {}
-};
-Object.assign(window, tempStubs);
-
 import { refreshMasterDashboard, refreshVendorsListView } from './dashboard.js';
 import { syncQueuedRequests, updateSyncStatus, triggerManualSync, refreshAllData } from './api.js';
 import { initReportsConsoleEngine, handleReportOptionsPopulation, compileFieldReport } from './reports.js';
@@ -33,7 +16,7 @@ function showPage(pageId) {
   window.scrollTo(0, 0);
 }
 
-// Attach ALL global functions to window
+// Attach ALL global functions to window (used by inline onclick="" handlers in index.html)
 window.showPage = showPage;
 window.loadProjectConsoleHub = loadProjectConsoleHub;
 window.triggerEditProjectProfile = triggerEditProjectProfile;
@@ -51,15 +34,15 @@ window.compileFieldReport = compileFieldReport;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(e => console.warn(e)));
 }
-window.addEventListener('online', syncQueuedRequests);
+window.addEventListener('online', () => { updateSyncStatus(); syncQueuedRequests(); });
 window.addEventListener('offline', updateSyncStatus);
 
 // Initial load
-window.onload = () => {
+window.addEventListener('load', () => {
   updateSyncStatus();
   refreshMasterDashboard();
   if (navigator.onLine) syncQueuedRequests();
   showPage('dashboard');
-};
+});
 
-export { showPage };  // export if needed elsewhere
+export { showPage };
