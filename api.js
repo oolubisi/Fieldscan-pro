@@ -89,9 +89,14 @@ export async function syncQueuedRequests() {
 
 export async function updateSyncStatus() {
   const badge = document.getElementById('sync-status');
-  if (!badge) return;
+  const pendingBadge = document.getElementById('sync-pending-badge');
   const queue = await getQueuedRequests();
-  if (!navigator.onLine) { badge.innerHTML = `<i class="fas fa-wifi"></i> Offline`; badge.style.display = 'block'; return; }
+  if (pendingBadge) {
+    pendingBadge.textContent = queue.length;
+    pendingBadge.style.display = queue.length ? 'inline-block' : 'none';
+  }
+  if (!badge) return;
+  if (!navigator.onLine) { badge.innerHTML = `<i class="fas fa-wifi"></i> Offline${queue.length ? ` • ${queue.length} pending` : ''}`; badge.style.display = 'block'; return; }
   if (queue.length) { badge.innerHTML = `<i class="fas fa-sync-alt fa-spin"></i> ${queue.length} pending`; badge.style.display = 'block'; return; }
   badge.style.display = 'none';
 }

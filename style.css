@@ -23,6 +23,8 @@ h2 { font-size: 22px; font-weight: 800; }
 .segment-bar { display: flex; gap: 6px; overflow-x: auto; background: var(--card); padding: 6px; border-radius: 16px; margin-bottom: 20px; border: 1px solid var(--border); }
 .segment-btn { flex: 0 0 auto; padding: 12px 12px; background: transparent; font-weight: 700; font-size: 13px; border-radius: 12px; color: var(--muted); text-align: center; cursor: pointer; border: none; }
 .segment-btn.active { background: var(--text); color: white; }
+.sync-btn { display: inline-flex; align-items: center; gap: 6px; }
+.sync-count-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 900; line-height: 20px; text-align: center; }
 .page-view { display: none; }
 .page-view.active-view { display: block; }
 .card { background: white; border-radius: 20px; padding: 16px; border: 1px solid var(--border); margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
