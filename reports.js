@@ -25,8 +25,10 @@ export async function compileFieldReport() {
   if (!pId || !layout) { alert("Select project and report type"); return; }
   const cache = getCache();
   const proj = cache.projects.find(p=>p.projectId===pId);
+  if (!proj) { alert("Selected project not found. Try refreshing data."); return; }
   const inspections = (await callApi('getInspections', {})).filter(i=>i.projectId===pId);
   const payments = (await callApi('getPayments', {})).filter(p=>p.projectId===pId);
+  const snags = (await callApi('getSnags', {})).filter(s=>s.projectId===pId);
   let html = `<h2>FieldScan Pro Report</h2><div>Project: ${escapeHtml(proj.clientName)} (${pId})</div>`;
   if (layout === 'inspection_report') {
     html += `<h3>Inspections</h3>${inspections.map(i=>`<div>${i.inspectionDate}: ${i.areaInspected} - ${i.siteCondition}</div>`).join('')}`;
@@ -35,7 +37,8 @@ export async function compileFieldReport() {
     const totalOut = payments.filter(p=>p.paymentDirection!=='Client Receipt').reduce((s,p)=>s+Number(p.amount),0);
     html += `<h3>Payments</h3><div>Received: ₦${moneyValue(totalIn)}</div><div>Paid Out: ₦${moneyValue(totalOut)}</div><div>Balance: ₦${moneyValue(totalIn-totalOut)}</div>`;
   } else {
-    html += `<h3>Master Dossier</h3><div>${inspections.length} inspections, ${payments.length} payments</div>`;
+    const openSnags = snags.filter(s=>s.status!=='Completed').length;
+    html += `<h3>Master Dossier</h3><div>${inspections.length} inspections, ${payments.length} payments, ${snags.length} snags (${openSnags} open)</div>`;
   }
   const preview = document.getElementById('report-preview-viewport');
   if (preview) preview.innerHTML = html;

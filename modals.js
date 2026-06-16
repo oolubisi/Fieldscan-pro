@@ -1,11 +1,29 @@
 // modals.js
-import { escapeHtml, escapeAttr, splitAttachments, normalizeAttachments, compressImageToTargetLimit, getDirectImageUrl, getGPSLocation, paymentDirectionOf } from './utils.js';
+import { escapeHtml, escapeAttr, splitAttachments, normalizeAttachments, compressImageToTargetLimit, getDirectImageUrl, getGPSLocation, paymentDirectionOf, todayFormatted } from './utils.js';
 import { callApi, getCache, getCurrentProjectId, setCache } from './api.js';
 import { refreshMasterDashboard, refreshVendorsListView } from './dashboard.js';
-import { loadProjectConsoleHub, loadInspectionListings, loadTakeOffListings, loadProgressTimelineFeed, loadWorkOrdersListings, loadPaymentsListings } from './console.js';
+import { loadProjectConsoleHub, loadInspectionListings, loadTakeOffListings, loadProgressTimelineFeed, loadWorkOrdersListings, loadPaymentsListings, loadSnagsListings } from './console.js';
+import { saveSnagPhotosLocally, getSnagPhotosLocally, deleteSnagPhotosLocally } from './db.js';
 
 let currentModalFiles = [];
 let currentAvatarPhoto = "";
+let modalRecordCache = {};
+
+function resetSubmitOnError(submit) {
+  return (err) => {
+    submit.disabled = false;
+    submit.innerText = "Save";
+  };
+}
+
+export function openModalWithRecord(type, record) {
+  if (record) {
+    const idField = {project:'projectId',inspection:'inspectionId',takeoff_item:'itemId',workorder:'workOrderId',payment:'paymentId',vendor:'vendorId',snag:'snagId'}[type];
+    const cacheKey = `${type}:${record[idField]}`;
+    modalRecordCache[cacheKey] = record;
+  }
+  return openModal(type, record);
+}
 
 // ======================== ATTACHMENT PREVIEW HELPERS ========================
 export function populateModalInlineImageGalleryPreviews(containerId) {
@@ -98,6 +116,7 @@ export async function openModal(type, editData = null) {
         <option value="Handed Over" ${isEdit&&editData.projectStatus==='Handed Over'?'selected':''}>Handed Over</option>
         <option value="Declined" ${isEdit&&editData.projectStatus==='Declined'?'selected':''}>Declined</option>
       </select>
+      <label ${labelStyle}>Scope</label><textarea id="p_scope" rows="3" ${largeInput}>${escapeHtml(isEdit?editData.scope:'')}</textarea>
       <label ${labelStyle}>Notes</label><textarea id="p_notes" rows="2" ${largeInput}>${escapeHtml(isEdit?editData.notes:'')}</textarea>
     `;
     submit.onclick = () => {
@@ -111,13 +130,14 @@ export async function openModal(type, editData = null) {
         clientPhone: phone,
         clientEmail: document.getElementById('p_email').value,
         projectStatus: document.getElementById('p_status').value,
+        scope: document.getElementById('p_scope').value,
         notes: document.getElementById('p_notes').value
       };
       callApi(isEdit ? 'updateProject' : 'saveProject', payload).then(() => {
         closeModal();
         refreshMasterDashboard();
         if (isEdit) loadProjectConsoleHub(payload.projectId);
-      });
+      }).catch(resetSubmitOnError(submit));
     };
   }
   // ---------- INSPECTION ----------
@@ -148,7 +168,7 @@ export async function openModal(type, editData = null) {
       const payload = {
         inspectionId: uniqueId,
         projectId: getCurrentProjectId(),
-        inspectionDate: new Date().toLocaleDateString(),
+        inspectionDate: todayFormatted(),
         inspectionType: document.getElementById('i_type').value,
         areaInspected: document.getElementById('i_area').value,
         siteCondition: condition,
@@ -157,8 +177,8 @@ export async function openModal(type, editData = null) {
       };
       callApi(isEdit ? 'updateInspection' : 'saveInspection', payload).then(() => {
         closeModal();
-        loadInspectionListings();
-      });
+        loadInspectionListings(true);
+      }).catch(resetSubmitOnError(submit));
     };
   }
   // ---------- TAKE-OFF ----------
@@ -173,6 +193,7 @@ export async function openModal(type, editData = null) {
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <input id="t_qty" placeholder="Quantity" value="${escapeAttr(isEdit?editData.quantity:'')}" ${largeInput}>
         <select id="t_unit" ${largeInput}>
+          <option value="" ${!isEdit ? 'selected' : ''} disabled>Select unit</option>
           <option value="sqm" ${isEdit && editData.unit === 'sqm' ? 'selected' : ''}>sqm</option>
           <option value="m" ${isEdit && editData.unit === 'm' ? 'selected' : ''}>m</option>
           <option value="pcs" ${isEdit && editData.unit === 'pcs' ? 'selected' : ''}>pcs</option>
@@ -190,12 +211,13 @@ export async function openModal(type, editData = null) {
         if (confirm("Delete this item?")) {
           callApi('deleteTakeOffItem', { itemId: uniqueId }).then(() => {
             closeModal();
-            loadTakeOffListings();
-          });
+            loadTakeOffListings(true);
+          }).catch(() => {});
         }
       };
     }
     submit.onclick = async () => {
+      if (!document.getElementById('t_unit').value) { alert("Select a unit"); return; }
       submit.disabled = true; submit.innerText = "GPS...";
       const gps = await getGPSLocation();
       submit.innerText = "Saving...";
@@ -213,8 +235,8 @@ export async function openModal(type, editData = null) {
       };
       callApi(isEdit ? 'updateTakeOffItem' : 'saveTakeOffItem', payload).then(() => {
         closeModal();
-        loadTakeOffListings();
-      });
+        loadTakeOffListings(true);
+      }).catch(resetSubmitOnError(submit));
     };
   }
   // ---------- PROGRESS ENTRY ----------
@@ -225,6 +247,7 @@ export async function openModal(type, editData = null) {
       <label ${labelStyle}>Trade</label><input id="l_trade" ${largeInput}>
       <label ${labelStyle}>Completion %</label>
       <select id="l_pct" ${largeInput}>
+        <option value="" selected disabled>Select %</option>
         <option>10</option><option>35</option><option>75</option><option>100</option>
       </select>
       <label ${labelStyle}>Comments</label><textarea id="l_comm" rows="3" ${largeInput}></textarea>
@@ -233,6 +256,8 @@ export async function openModal(type, editData = null) {
     `;
     document.getElementById('l_photo').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'progressAttachmentsPreviews');
     submit.onclick = async () => {
+      if (!document.getElementById('l_pct').value) { alert("Select a completion %"); return; }
+      if (!document.getElementById('l_trade').value.trim()) { alert("Enter a trade"); return; }
       submit.disabled = true; submit.innerText = "GPS...";
       const gps = await getGPSLocation();
       submit.innerText = "Saving...";
@@ -246,8 +271,8 @@ export async function openModal(type, editData = null) {
       };
       callApi('saveProgressLog', payload).then(() => {
         closeModal();
-        loadProgressTimelineFeed();
-      });
+        loadProgressTimelineFeed(true);
+      }).catch(resetSubmitOnError(submit));
     };
   }
   // ---------- VENDOR ----------
@@ -294,7 +319,7 @@ export async function openModal(type, editData = null) {
           callApi('deleteVendor', { vendorId: uniqueId }).then(() => {
             closeModal();
             refreshVendorsListView();
-          });
+          }).catch(() => {});
         }
       };
     }
@@ -319,7 +344,7 @@ export async function openModal(type, editData = null) {
       callApi(isEdit ? 'updateVendor' : 'saveVendor', payload).then(() => {
         closeModal();
         refreshVendorsListView();
-      });
+      }).catch(resetSubmitOnError(submit));
     };
   }
   // ---------- WORK ORDER ----------
@@ -362,28 +387,136 @@ export async function openModal(type, editData = null) {
       };
       callApi(isEdit ? 'updateWorkOrder' : 'saveWorkOrder', payload).then(() => {
         closeModal();
-        loadWorkOrdersListings();
-      });
+        loadWorkOrdersListings(true);
+      }).catch(resetSubmitOnError(submit));
     };
   }
-  // ---------- PAYMENT ----------
+  // ---------- SNAG ----------
+  else if (type === 'snag') {
+    const uniqueId = isEdit ? editData.snagId : "SNAG-" + Date.now();
+    title.innerText = isEdit ? "Edit Snag" : "New Snag";
+    // Snag photos are local-only (never sent to the server / Drive) - load from IndexedDB
+    currentModalFiles = [];
+    if (isEdit) {
+      try {
+        const localPhotos = await getSnagPhotosLocally(uniqueId);
+        if (localPhotos) currentModalFiles = splitAttachments(localPhotos);
+      } catch (e) { console.warn("Could not load local snag photos:", e); }
+    }
+    body.innerHTML = `
+      <label ${labelStyle}>Notes</label><textarea id="sn_notes" rows="3" ${largeInput}>${escapeHtml(isEdit?editData.notes:'')}</textarea>
+      <label ${labelStyle}>Assigned To</label><input id="sn_assigned" value="${escapeAttr(isEdit?editData.assigned:'')}" ${largeInput}>
+      <label ${labelStyle}>Date Logged</label><input id="sn_date_logged" type="text" value="${escapeAttr(isEdit ? editData.dateLogged : todayFormatted())}" placeholder="YYYY/MM/DD" disabled style="${largeInput} background:#f0f0f0;">
+      <label ${labelStyle}>Status</label>
+      <select id="sn_status" ${largeInput}>
+        <option value="Open" ${(!isEdit || editData.status === 'Open') ? 'selected' : ''}>Open</option>
+        <option value="Completed" ${isEdit && editData.status === 'Completed' ? 'selected' : ''}>Completed</option>
+      </select>
+      <div id="sn_date_completed_wrap" style="display:${isEdit && editData.status === 'Completed' ? 'block' : 'none'};">
+        <label ${labelStyle}>Date Completed</label><input id="sn_date_completed" type="text" value="${escapeAttr(isEdit && editData.dateCompleted ? editData.dateCompleted : todayFormatted())}" placeholder="YYYY/MM/DD" disabled style="${largeInput} background:#f0f0f0;">
+      </div>
+      <div id="snagAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
+      <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="sn_photo" accept="image/*" multiple style="display:none"></label>
+      <p style="font-size:11px; color:var(--muted); margin-top:4px;"><i class="fas fa-lock"></i> Photos stay on this device only and are not uploaded.</p>
+      ${isEdit ? `<button class="action-btn" id="sn_delete_btn" style="background:var(--danger); margin-top:10px;">Delete</button>` : ''}
+    `;
+    if (currentModalFiles.length) populateModalInlineImageGalleryPreviews('snagAttachmentsPreviews');
+    document.getElementById('sn_photo').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'snagAttachmentsPreviews');
+    document.getElementById('sn_status').onchange = (e) => {
+      const wrap = document.getElementById('sn_date_completed_wrap');
+      if (e.target.value === 'Completed') {
+        wrap.style.display = 'block';
+        const inp = document.getElementById('sn_date_completed');
+        if (!inp.value) inp.value = todayFormatted();
+      } else {
+        wrap.style.display = 'none';
+      }
+    };
+    if (isEdit) {
+      document.getElementById('sn_delete_btn').onclick = () => {
+        if (confirm("Delete this snag?")) {
+          callApi('deleteSnag', { snagId: uniqueId }).then(async () => {
+            try { await deleteSnagPhotosLocally(uniqueId); } catch (e) { console.warn(e); }
+            closeModal();
+            loadSnagsListings(true);
+          }).catch(() => {});
+        }
+      };
+    }
+    submit.onclick = async () => {
+      if (!document.getElementById('sn_notes').value.trim()) { alert("Enter snag notes"); return; }
+      submit.disabled = true; submit.innerText = "Saving...";
+      const status = document.getElementById('sn_status').value;
+      const payload = {
+        snagId: uniqueId,
+        projectId: getCurrentProjectId(),
+        notes: document.getElementById('sn_notes').value,
+        assigned: document.getElementById('sn_assigned').value,
+        dateLogged: isEdit ? editData.dateLogged : todayFormatted(),
+        dateCompleted: status === 'Completed' ? document.getElementById('sn_date_completed').value : "",
+        status: status
+        // photoUrl intentionally omitted - photos never leave this device
+      };
+      try {
+        await saveSnagPhotosLocally(uniqueId, normalizeAttachments(currentModalFiles));
+      } catch (e) {
+        console.warn("Could not save snag photos locally:", e);
+      }
+      callApi(isEdit ? 'updateSnag' : 'saveSnag', payload).then(() => {
+        closeModal();
+        loadSnagsListings(true);
+      }).catch(resetSubmitOnError(submit));
+    };
+  }
   else if (type === 'payment') {
     title.innerText = isEdit ? "Edit Payment" : "New Payment";
     if (isEdit && editData.attachments) currentModalFiles = splitAttachments(editData.attachments);
+    let vendors = getCache().vendors || [];
+    if (!vendors.length) {
+      try {
+        const fetched = await callApi('getVendors', {});
+        const cache = getCache();
+        cache.vendors = fetched || [];
+        setCache(cache);
+        vendors = cache.vendors;
+      } catch (e) { console.warn("Could not load vendors for payment modal:", e); }
+    }
+    const projects = getCache().projects || [];
+    const currentDir = isEdit ? paymentDirectionOf(editData) : 'Outgoing Payment';
+
+    function payeeFieldHtml(direction) {
+      const currentPayee = isEdit ? editData.payee : '';
+      if (direction === 'Outgoing Payment') {
+        return `<select id="pay_payee" ${largeInput}>
+          <option value="">-- Select Vendor --</option>
+          ${vendors.map(v => `<option value="${escapeAttr(v.company)}" ${currentPayee === v.company ? 'selected' : ''}>${escapeHtml(v.company)}</option>`).join('')}
+        </select>`;
+      } else if (direction === 'Client Receipt') {
+        return `<select id="pay_payee" ${largeInput}>
+          <option value="">-- Select Project --</option>
+          ${projects.map(p => `<option value="${escapeAttr(p.clientName)}" data-project-id="${escapeAttr(p.projectId)}" ${currentPayee === p.clientName ? 'selected' : ''}>${escapeHtml(p.clientName)} (${escapeHtml(p.projectId)})</option>`).join('')}
+        </select>`;
+      } else {
+        return `<input id="pay_payee" value="${escapeAttr(currentPayee)}" placeholder="Describe the expense" ${largeInput}>`;
+      }
+    }
+
     body.innerHTML = `
-      <label ${labelStyle}>ID</label><input value="${isEdit ? editData.paymentId : "Auto-generated (PAY-XXXXX)"}" disabled style="${largeInput} background:#f0f0f0;">
+      <label ${labelStyle}>ID</label><input value="${isEdit ? editData.paymentId : "Auto-generated"}" disabled style="${largeInput} background:#f0f0f0;">
       <label ${labelStyle}>Direction</label>
       <select id="pay_dir" ${largeInput}>
-        <option value="Client Receipt" ${isEdit && paymentDirectionOf(editData) === 'Client Receipt' ? 'selected' : ''}>Client Receipt</option>
-        <option value="Outgoing Payment" ${(!isEdit || paymentDirectionOf(editData) === 'Outgoing Payment') ? 'selected' : ''}>Outgoing Payment</option>
-        <option value="Small Expense" ${isEdit && paymentDirectionOf(editData) === 'Small Expense' ? 'selected' : ''}>Small Expense</option>
+        <option value="Client Receipt" ${currentDir === 'Client Receipt' ? 'selected' : ''}>Client Receipt</option>
+        <option value="Outgoing Payment" ${currentDir === 'Outgoing Payment' ? 'selected' : ''}>Outgoing Payment</option>
+        <option value="Small Expense" ${currentDir === 'Small Expense' ? 'selected' : ''}>Small Expense</option>
       </select>
-      <label ${labelStyle}>Payee</label><input id="pay_payee" value="${escapeAttr(isEdit?editData.payee:'')}" ${largeInput}>
+      <label ${labelStyle}>Payee</label>
+      <div id="pay_payee_wrap">${payeeFieldHtml(currentDir)}</div>
       <label ${labelStyle}>Category</label>
       <select id="pay_cat" ${largeInput}>
         <option value="">--</option>
         <option value="Labour" ${isEdit && editData.expenseCategory === 'Labour' ? 'selected' : ''}>Labour</option>
         <option value="Materials" ${isEdit && editData.expenseCategory === 'Materials' ? 'selected' : ''}>Materials</option>
+        <option value="Subcontractor Cost" ${isEdit && editData.expenseCategory === 'Subcontractor Cost' ? 'selected' : ''}>Subcontractor Cost</option>
         <option value="Transport" ${isEdit && editData.expenseCategory === 'Transport' ? 'selected' : ''}>Transport</option>
         <option value="Misc" ${isEdit && editData.expenseCategory === 'Misc' ? 'selected' : ''}>Misc</option>
       </select>
@@ -405,16 +538,21 @@ export async function openModal(type, editData = null) {
     `;
     if (currentModalFiles.length) populateModalInlineImageGalleryPreviews('paymentAttachmentsPreviews');
     document.getElementById('pay_files').onchange = (e) => processIncomingMultiAttachments(e.target.files, 'paymentAttachmentsPreviews');
+    document.getElementById('pay_dir').onchange = (e) => {
+      document.getElementById('pay_payee_wrap').innerHTML = payeeFieldHtml(e.target.value);
+    };
     submit.onclick = () => {
       const amount = document.getElementById('pay_amount').value;
       if (!amount || amount <= 0) { alert("Enter a valid amount"); return; }
+      const payee = document.getElementById('pay_payee').value;
+      if (!payee) { alert("Select or enter a payee"); return; }
       submit.disabled = true; submit.innerText = "Saving...";
       const payload = {
-        paymentId: isEdit ? editData.paymentId : null,
+        paymentId: isEdit ? editData.paymentId : "PAY-TEMP-" + Date.now(),
         projectId: getCurrentProjectId(),
-        paymentDate: new Date().toLocaleDateString(),
+        paymentDate: todayFormatted(),
         paymentDirection: document.getElementById('pay_dir').value,
-        payee: document.getElementById('pay_payee').value,
+        payee: payee,
         expenseCategory: document.getElementById('pay_cat').value,
         referenceId: "",
         amount: amount,
@@ -425,11 +563,11 @@ export async function openModal(type, editData = null) {
       };
       callApi(isEdit ? 'updatePayment' : 'savePayment', payload).then(() => {
         closeModal();
-        loadPaymentsListings();
-      });
+        loadPaymentsListings(true);
+      }).catch(resetSubmitOnError(submit));
     };
   }
 }
 
 // ======================== EXPORTS ========================
-export { removeAttachmentByIndex, clearVendorAvatarPhoto };
+export { removeAttachmentByIndex, clearVendorAvatarPhoto, openModalWithRecord };

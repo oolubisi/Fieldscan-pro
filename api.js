@@ -3,9 +3,9 @@ import { AUTH_TOKEN, GAS_URL } from './config.js';
 import { queueOfflineRequest, getQueuedRequests, deleteQueuedRequest } from './db.js';
 import { readBackup, writeBackup, applyLocalMutation, recomputeLocalStats } from './backup.js';
 import { refreshMasterDashboard, refreshVendorsListView } from './dashboard.js';
-import { loadInspectionListings, loadTakeOffListings, loadProgressTimelineFeed, loadWorkOrdersListings, loadPaymentsListings } from './console.js';
+import { loadInspectionListings, loadTakeOffListings, loadProgressTimelineFeed, loadSnagsListings, loadWorkOrdersListings, loadPaymentsListings } from './console.js';
 
-let cache = { projects: [], inspections: [], takeoffs: [], progressLogs: [], vendors: [], workorders: [], payments: [] };
+let cache = { projects: [], inspections: [], takeoffs: [], progressLogs: [], snags: [], vendors: [], workorders: [], payments: [] };
 let currentSelectedProjectId = null;
 
 export function setCache(newCache) { cache = { ...cache, ...newCache }; }
@@ -14,23 +14,49 @@ export function setCurrentProjectId(id) { currentSelectedProjectId = id; }
 export function getCurrentProjectId() { return currentSelectedProjectId; }
 
 export async function callApi(action, data = {}) {
+  const isGet = action.startsWith('get');
+  let response;
   try {
     const payload = { action, data: { ...data, token: AUTH_TOKEN } };
-    const response = await fetch(GAS_URL, { method: "POST", body: JSON.stringify(payload) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const result = await response.json();
-    if (result && (result.status === 'error' || result.success === false)) throw new Error(result.message || result.error);
-    if (action.startsWith('get')) writeBackup(action, result);
-    return result;
+    response = await fetch(GAS_URL, { method: "POST", body: JSON.stringify(payload) });
   } catch (err) {
-    console.warn("Offline, queuing:", err);
-    if (action.startsWith('get')) return readBackup(action, action === 'getStats' ? { activeVendors: '--' } : []);
+    // Network-level failure (offline, DNS, CORS) - GET falls back to cache, writes queue
+    console.warn(`callApi [${action}] network error:`, err);
+    if (isGet) return readBackup(action, action === 'getStats' ? { activeVendors: '--' } : []);
     await queueOfflineRequest(action, data);
     applyLocalMutation(action, data);
     updateSyncStatus();
     alert("📴 Offline: saved locally. Will sync automatically when online.");
     return { status: "queued" };
   }
+
+  // Non-2xx HTTP (redirect, auth error, etc.) - GET falls back to cache
+  if (!response.ok) {
+    console.warn(`callApi [${action}] HTTP ${response.status}`);
+    if (isGet) return readBackup(action, action === 'getStats' ? { activeVendors: '--' } : []);
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  let result;
+  try {
+    result = await response.json();
+  } catch (err) {
+    console.warn(`callApi [${action}] JSON parse error:`, err);
+    if (isGet) return readBackup(action, action === 'getStats' ? { activeVendors: '--' } : []);
+    throw new Error("Invalid response from server");
+  }
+
+  // Server logic/validation error - GET falls back to cache, writes surface error
+  if (result && (result.status === 'error' || result.success === false)) {
+    const message = result.message || result.error || "Server rejected the request";
+    console.warn(`callApi [${action}] server error:`, message);
+    if (isGet) return readBackup(action, action === 'getStats' ? { activeVendors: '--' } : []);
+    alert(`⚠️ Save failed: ${message}`);
+    throw new Error(message);
+  }
+
+  if (isGet) writeBackup(action, result);
+  return result;
 }
 
 const DEPENDENCY_ORDER = {
@@ -40,7 +66,8 @@ const DEPENDENCY_ORDER = {
   saveInspection: 4, updateInspection: 4,
   saveTakeOffItem: 5, updateTakeOffItem: 5, deleteTakeOffItem: 5,
   saveProgressLog: 6,
-  savePayment: 7, updatePayment: 7
+  saveSnag: 7, updateSnag: 7, deleteSnag: 7,
+  savePayment: 8, updatePayment: 8
 };
 
 export async function syncQueuedRequests() {
@@ -82,7 +109,7 @@ export async function syncQueuedRequests() {
   const vendorsView = document.getElementById('view-vendors');
   if (vendorsView && vendorsView.classList.contains('active-view')) refreshVendorsListView();
   if (currentSelectedProjectId) {
-    loadInspectionListings(); loadTakeOffListings(); loadProgressTimelineFeed(); loadWorkOrdersListings(); loadPaymentsListings();
+    loadInspectionListings(true); loadTakeOffListings(true); loadProgressTimelineFeed(true); loadSnagsListings(true); loadWorkOrdersListings(true); loadPaymentsListings(true);
   }
   await updateSyncStatus();
 }
@@ -139,15 +166,14 @@ export async function refreshAllData() {
   try {
     setButtonState('refresh-data-btn', `<i class="fas fa-spinner fa-spin"></i> Refreshing...`, true);
     await callApi('getProjects', {}); await callApi('getInspections', {}); await callApi('getTakeOffItems', {});
-    await callApi('getProgressLogs', {}); await callApi('getVendors', {}); await callApi('getWorkOrders', {}); await callApi('getPayments', {});
+    await callApi('getProgressLogs', {}); await callApi('getSnags', {}); await callApi('getVendors', {}); await callApi('getWorkOrders', {}); await callApi('getPayments', {});
     await refreshMasterDashboard();
     if (currentSelectedProjectId) {
-      loadInspectionListings(); loadTakeOffListings(); loadProgressTimelineFeed(); loadWorkOrdersListings(); loadPaymentsListings();
+      loadInspectionListings(true); loadTakeOffListings(true); loadProgressTimelineFeed(true); loadSnagsListings(true); loadWorkOrdersListings(true); loadPaymentsListings(true);
     }
     showFinishedButtonState('refresh-data-btn', `<i class="fas fa-check"></i> Refreshed`, normalHtml);
   } catch (err) {
     setButtonState('refresh-data-btn', normalHtml, false);
     throw err;
   }
-  alert("Data refreshed from server.");
 }

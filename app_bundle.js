@@ -89,19 +89,14 @@ function isPettyExpense(p) { return paymentDirectionOf(p) === 'Small Expense'; }
 // db.js
 const DB_NAME = "FieldScanOfflineDB";
 const STORE_NAME = "syncQueue";
-const SNAG_PHOTO_STORE = "snagPhotos";
 
 let dbPromise = null;
 
 function openQueueDB() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 3);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
-      if (!db.objectStoreNames.contains(SNAG_PHOTO_STORE)) db.createObjectStore(SNAG_PHOTO_STORE, { keyPath: "snagId" });
-    };
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = (e) => { e.target.result.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true }); };
     req.onsuccess = (e) => {
       const db = e.target.result;
       db.onclose = () => { dbPromise = null; };
@@ -136,39 +131,6 @@ async function deleteQueuedRequest(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
     tx.objectStore(STORE_NAME).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-// ======================== SNAG PHOTOS (LOCAL ONLY - NEVER SYNCED) ========================
-// Snag photos are intentionally kept on-device only and are never sent to the server
-// or uploaded to Google Drive. They live in this dedicated IndexedDB store, keyed by snagId.
-
-async function saveSnagPhotosLocally(snagId, photoDataString) {
-  const db = await openQueueDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(SNAG_PHOTO_STORE, "readwrite");
-    tx.objectStore(SNAG_PHOTO_STORE).put({ snagId, photoData: photoDataString, savedAt: Date.now() });
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function getSnagPhotosLocally(snagId) {
-  const db = await openQueueDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(SNAG_PHOTO_STORE, "readonly").objectStore(SNAG_PHOTO_STORE).get(snagId);
-    req.onsuccess = () => resolve(req.result ? req.result.photoData : "");
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function deleteSnagPhotosLocally(snagId) {
-  const db = await openQueueDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(SNAG_PHOTO_STORE, "readwrite");
-    tx.objectStore(SNAG_PHOTO_STORE).delete(snagId);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -463,7 +425,7 @@ async function openModal(type, editData = null) {
       };
       callApi(isEdit ? 'updateInspection' : 'saveInspection', payload).then(() => {
         closeModal();
-        loadInspectionListings(true);
+        loadInspectionListings();
       }).catch(resetSubmitOnError(submit));
     };
   }
@@ -497,7 +459,7 @@ async function openModal(type, editData = null) {
         if (confirm("Delete this item?")) {
           callApi('deleteTakeOffItem', { itemId: uniqueId }).then(() => {
             closeModal();
-            loadTakeOffListings(true);
+            loadTakeOffListings();
           }).catch(() => {});
         }
       };
@@ -521,7 +483,7 @@ async function openModal(type, editData = null) {
       };
       callApi(isEdit ? 'updateTakeOffItem' : 'saveTakeOffItem', payload).then(() => {
         closeModal();
-        loadTakeOffListings(true);
+        loadTakeOffListings();
       }).catch(resetSubmitOnError(submit));
     };
   }
@@ -557,7 +519,7 @@ async function openModal(type, editData = null) {
       };
       callApi('saveProgressLog', payload).then(() => {
         closeModal();
-        loadProgressTimelineFeed(true);
+        loadProgressTimelineFeed();
       }).catch(resetSubmitOnError(submit));
     };
   }
@@ -673,7 +635,7 @@ async function openModal(type, editData = null) {
       };
       callApi(isEdit ? 'updateWorkOrder' : 'saveWorkOrder', payload).then(() => {
         closeModal();
-        loadWorkOrdersListings(true);
+        loadWorkOrdersListings();
       }).catch(resetSubmitOnError(submit));
     };
   }
@@ -681,14 +643,7 @@ async function openModal(type, editData = null) {
   else if (type === 'snag') {
     const uniqueId = isEdit ? editData.snagId : "SNAG-" + Date.now();
     title.innerText = isEdit ? "Edit Snag" : "New Snag";
-    // Snag photos are local-only (never sent to the server / Drive) - load from IndexedDB
-    currentModalFiles = [];
-    if (isEdit) {
-      try {
-        const localPhotos = await getSnagPhotosLocally(uniqueId);
-        if (localPhotos) currentModalFiles = splitAttachments(localPhotos);
-      } catch (e) { console.warn("Could not load local snag photos:", e); }
-    }
+    if (isEdit && editData.photoUrl) currentModalFiles = splitAttachments(editData.photoUrl);
     body.innerHTML = `
       <label ${labelStyle}>Notes</label><textarea id="sn_notes" rows="3" ${largeInput}>${escapeHtml(isEdit?editData.notes:'')}</textarea>
       <label ${labelStyle}>Assigned To</label><input id="sn_assigned" value="${escapeAttr(isEdit?editData.assigned:'')}" ${largeInput}>
@@ -703,7 +658,6 @@ async function openModal(type, editData = null) {
       </div>
       <div id="snagAttachmentsPreviews" class="modal-preview-grid" style="display:none;"></div>
       <label class="icon-upload-label"><i class="fas fa-paperclip"></i><input type="file" id="sn_photo" accept="image/*" multiple style="display:none"></label>
-      <p style="font-size:11px; color:var(--muted); margin-top:4px;"><i class="fas fa-lock"></i> Photos stay on this device only and are not uploaded.</p>
       ${isEdit ? `<button class="action-btn" id="sn_delete_btn" style="background:var(--danger); margin-top:10px;">Delete</button>` : ''}
     `;
     if (currentModalFiles.length) populateModalInlineImageGalleryPreviews('snagAttachmentsPreviews');
@@ -721,10 +675,9 @@ async function openModal(type, editData = null) {
     if (isEdit) {
       document.getElementById('sn_delete_btn').onclick = () => {
         if (confirm("Delete this snag?")) {
-          callApi('deleteSnag', { snagId: uniqueId }).then(async () => {
-            try { await deleteSnagPhotosLocally(uniqueId); } catch (e) { console.warn(e); }
+          callApi('deleteSnag', { snagId: uniqueId }).then(() => {
             closeModal();
-            loadSnagsListings(true);
+            loadSnagsListings();
           }).catch(() => {});
         }
       };
@@ -740,33 +693,19 @@ async function openModal(type, editData = null) {
         assigned: document.getElementById('sn_assigned').value,
         dateLogged: isEdit ? editData.dateLogged : todayFormatted(),
         dateCompleted: status === 'Completed' ? document.getElementById('sn_date_completed').value : "",
-        status: status
-        // photoUrl intentionally omitted - photos never leave this device
+        status: status,
+        photoUrl: normalizeAttachments(currentModalFiles)
       };
-      try {
-        await saveSnagPhotosLocally(uniqueId, normalizeAttachments(currentModalFiles));
-      } catch (e) {
-        console.warn("Could not save snag photos locally:", e);
-      }
       callApi(isEdit ? 'updateSnag' : 'saveSnag', payload).then(() => {
         closeModal();
-        loadSnagsListings(true);
+        loadSnagsListings();
       }).catch(resetSubmitOnError(submit));
     };
   }
   else if (type === 'payment') {
     title.innerText = isEdit ? "Edit Payment" : "New Payment";
     if (isEdit && editData.attachments) currentModalFiles = splitAttachments(editData.attachments);
-    let vendors = getCache().vendors || [];
-    if (!vendors.length) {
-      try {
-        const fetched = await callApi('getVendors', {});
-        const cache = getCache();
-        cache.vendors = fetched || [];
-        setCache(cache);
-        vendors = cache.vendors;
-      } catch (e) { console.warn("Could not load vendors for payment modal:", e); }
-    }
+    const vendors = getCache().vendors || [];
     const projects = getCache().projects || [];
     const currentDir = isEdit ? paymentDirectionOf(editData) : 'Outgoing Payment';
 
@@ -774,7 +713,7 @@ async function openModal(type, editData = null) {
       const currentPayee = isEdit ? editData.payee : '';
       if (direction === 'Outgoing Payment') {
         return `<select id="pay_payee" ${largeInput}>
-          <option value="">-- Select Vendor --</option>
+          <option value="">-- Select Subcontractor --</option>
           ${vendors.map(v => `<option value="${escapeAttr(v.company)}" ${currentPayee === v.company ? 'selected' : ''}>${escapeHtml(v.company)}</option>`).join('')}
         </select>`;
       } else if (direction === 'Client Receipt') {
@@ -802,7 +741,6 @@ async function openModal(type, editData = null) {
         <option value="">--</option>
         <option value="Labour" ${isEdit && editData.expenseCategory === 'Labour' ? 'selected' : ''}>Labour</option>
         <option value="Materials" ${isEdit && editData.expenseCategory === 'Materials' ? 'selected' : ''}>Materials</option>
-        <option value="Subcontractor Cost" ${isEdit && editData.expenseCategory === 'Subcontractor Cost' ? 'selected' : ''}>Subcontractor Cost</option>
         <option value="Transport" ${isEdit && editData.expenseCategory === 'Transport' ? 'selected' : ''}>Transport</option>
         <option value="Misc" ${isEdit && editData.expenseCategory === 'Misc' ? 'selected' : ''}>Misc</option>
       </select>
@@ -849,7 +787,7 @@ async function openModal(type, editData = null) {
       };
       callApi(isEdit ? 'updatePayment' : 'savePayment', payload).then(() => {
         closeModal();
-        loadPaymentsListings(true);
+        loadPaymentsListings();
       }).catch(resetSubmitOnError(submit));
     };
   }
@@ -933,52 +871,9 @@ async function loadProjectConsoleHub(projectId) {
   document.getElementById('c-meta-phone').href = proj.clientPhone ? "tel:"+proj.clientPhone : "#";
   document.getElementById('c-meta-notes').value = proj.notes || "";
   const scopeEl = document.getElementById('c-meta-scope');
-  if (scopeEl) {
-    scopeEl.value = proj.scope || "";
-    scopeEl.readOnly = true;
-    scopeEl.style.background = '#f5f5f5';
-  }
-  const scopeToggle = document.getElementById('scope-edit-toggle');
-  if (scopeToggle) scopeToggle.checked = false;
-  const scopeSaveBtn = document.getElementById('scope-save-btn');
-  if (scopeSaveBtn) scopeSaveBtn.style.display = 'none';
+  if (scopeEl) scopeEl.value = proj.scope || "";
   showPage('project-console');
   switchConsoleSegment('profile');
-}
-
-function toggleScopeEdit(isEditing) {
-  const scopeEl = document.getElementById('c-meta-scope');
-  const saveBtn = document.getElementById('scope-save-btn');
-  if (!scopeEl) return;
-  scopeEl.readOnly = !isEditing;
-  scopeEl.style.background = isEditing ? '#fff' : '#f5f5f5';
-  if (saveBtn) saveBtn.style.display = isEditing ? 'block' : 'none';
-  if (isEditing) scopeEl.focus();
-}
-
-async function saveProjectScope() {
-  const btn = document.getElementById('scope-save-btn');
-  const scopeEl = document.getElementById('c-meta-scope');
-  const toggle = document.getElementById('scope-edit-toggle');
-  const projectId = getCurrentProjectId();
-  if (!projectId || !scopeEl) return;
-  const newScope = scopeEl.value;
-  btn.disabled = true; btn.innerText = "Saving...";
-  try {
-    await callApi('updateProjectScope', { projectId, scope: newScope });
-    const cache = getCache();
-    const proj = cache.projects.find(p => p.projectId === projectId);
-    if (proj) proj.scope = newScope;
-    setCache(cache);
-    btn.innerText = "Save Scope";
-    btn.disabled = false;
-    if (toggle) toggle.checked = false;
-    toggleScopeEdit(false);
-  } catch (e) {
-    btn.innerText = "Save Scope";
-    btn.disabled = false;
-    alert("Failed to save scope: " + (e.message || "Unknown error"));
-  }
 }
 
 function triggerEditProjectProfile() {
@@ -1445,8 +1340,6 @@ window.showPage = showPage;
 window.loadProjectConsoleHub = loadProjectConsoleHub;
 window.triggerEditProjectProfile = triggerEditProjectProfile;
 window.switchConsoleSegment = switchConsoleSegment;
-window.toggleScopeEdit = toggleScopeEdit;
-window.saveProjectScope = saveProjectScope;
 window.openModal = openModal;
 window.openModalWithRecord = openModalWithRecord;
 window.closeModal = closeModal;

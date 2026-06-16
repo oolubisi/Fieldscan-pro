@@ -3,7 +3,7 @@ import { idsMatch } from './utils.js';
 
 const GET_ACTION_BY_STORE = {
   projects: "getProjects", inspections: "getInspections", takeoffs: "getTakeOffItems",
-  progressLogs: "getProgressLogs", vendors: "getVendors", workorders: "getWorkOrders", payments: "getPayments"
+  progressLogs: "getProgressLogs", snags: "getSnags", vendors: "getVendors", workorders: "getWorkOrders", payments: "getPayments"
 };
 
 export const MUTATION_MAP = {
@@ -15,6 +15,9 @@ export const MUTATION_MAP = {
   updateTakeOffItem: { store: "takeoffs", idKey: "itemId", mode: "upsert" },
   deleteTakeOffItem: { store: "takeoffs", idKey: "itemId", mode: "delete" },
   saveProgressLog: { store: "progressLogs", idKey: "logId", mode: "upsert" },
+  saveSnag: { store: "snags", idKey: "snagId", mode: "upsert" },
+  updateSnag: { store: "snags", idKey: "snagId", mode: "upsert" },
+  deleteSnag: { store: "snags", idKey: "snagId", mode: "delete" },
   saveVendor: { store: "vendors", idKey: "vendorId", mode: "upsert" },
   updateVendor: { store: "vendors", idKey: "vendorId", mode: "upsert" },
   deleteVendor: { store: "vendors", idKey: "vendorId", mode: "delete" },
@@ -26,7 +29,16 @@ export const MUTATION_MAP = {
 
 function backupKey(action) { return `fb_${action}`; }
 export function readBackup(action, fallback = []) { const raw = localStorage.getItem(backupKey(action)); return raw ? JSON.parse(raw) : fallback; }
-export function writeBackup(action, value) { localStorage.setItem(backupKey(action), JSON.stringify(value)); }
+export function writeBackup(action, value) {
+  try {
+    localStorage.setItem(backupKey(action), JSON.stringify(value));
+  } catch (err) {
+    console.error("writeBackup failed (storage may be full):", action, err);
+    if (err && err.name === 'QuotaExceededError') {
+      alert("⚠️ Local storage is full. Some offline data may not be saved. Try syncing and clearing attachments.");
+    }
+  }
+}
 
 export function recomputeLocalStats() {
   const vendors = readBackup('getVendors', []);

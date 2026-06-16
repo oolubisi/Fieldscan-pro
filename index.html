@@ -77,9 +77,11 @@
     </div>
     <div class="segment-bar" style="margin-bottom:10px;">
       <button class="segment-btn" id="seg-btn-profile" onclick="switchConsoleSegment('profile')">Profile</button>
+      <button class="segment-btn" id="seg-btn-scope" onclick="switchConsoleSegment('scope')">Scope</button>
       <button class="segment-btn" id="seg-btn-inspections" onclick="switchConsoleSegment('inspections')">Inspections</button>
       <button class="segment-btn" id="seg-btn-takeoff" onclick="switchConsoleSegment('takeoff')">Take‑Off</button>
       <button class="segment-btn" id="seg-btn-progress" onclick="switchConsoleSegment('progress')">Progress</button>
+      <button class="segment-btn" id="seg-btn-snags" onclick="switchConsoleSegment('snags')">Snags</button>
       <button class="segment-btn" id="seg-btn-workorders" onclick="switchConsoleSegment('workorders')">Work Orders</button>
       <button class="segment-btn" id="seg-btn-payments" onclick="switchConsoleSegment('payments')">Payments</button>
     </div>
@@ -89,6 +91,18 @@
         <div><strong>Location:</strong> <span id="c-meta-loc"></span></div>
         <div><strong>Phone:</strong> <a id="c-meta-phone" href="#"></a></div>
         <div><strong>Notes:</strong> <textarea id="c-meta-notes" rows="3" readonly style="background:#f5f5f5;"></textarea></div>
+      </div>
+    </div>
+    <div id="console-seg-scope" class="console-tab-window page-view">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong>Project Scope</strong>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; cursor:pointer;">
+            <input type="checkbox" id="scope-edit-toggle" style="width:auto;" onchange="toggleScopeEdit(this.checked)"> Edit
+          </label>
+        </div>
+        <textarea id="c-meta-scope" rows="8" readonly style="background:#f5f5f5; margin-top:8px;"></textarea>
+        <button class="action-btn" id="scope-save-btn" style="margin-top:10px; display:none;" onclick="saveProjectScope()">Save Scope</button>
       </div>
     </div>
     <div id="console-seg-inspections" class="console-tab-window page-view">
@@ -102,6 +116,10 @@
     <div id="console-seg-progress" class="console-tab-window page-view">
       <div id="console-progress-feed"></div>
       <button class="action-btn" style="margin-top:10px;" onclick="openModal('progress_entry', null)">+ Log Progress</button>
+    </div>
+    <div id="console-seg-snags" class="console-tab-window page-view">
+      <div id="console-snags-list"></div>
+      <button class="action-btn" style="margin-top:10px;" onclick="openModal('snag', null)">+ New Snag</button>
     </div>
     <div id="console-seg-workorders" class="console-tab-window page-view">
       <div id="console-workorders-list"></div>

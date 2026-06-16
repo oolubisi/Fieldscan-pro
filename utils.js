@@ -9,7 +9,7 @@ export function escapeHtml(str) {
     return m;
   });
 }
-export function escapeAttr(str) { return escapeHtml(str).replace(/`/g, '&#96;'); }
+export function escapeAttr(str) { return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/`/g, '&#96;'); }
 export function moneyValue(val) { const n = Number(val || 0); return isNaN(n) ? '0' : n.toLocaleString(); }
 export function splitAttachments(val) { return String(val || '').split(ATTACHMENT_DELIMITER).map(s => s.trim()).filter(Boolean); }
 export function normalizeAttachments(files) { return files.filter(Boolean).join(ATTACHMENT_DELIMITER); }
@@ -43,6 +43,10 @@ export function getDirectImageUrl(url) {
   if (match && match[1]) {
     return `${GAS_URL}?id=${match[1]}&token=${AUTH_TOKEN}`;
   }
+  // Bare Drive file ID (e.g. returned directly by code.gs after upload) - no slashes, no scheme
+  if (!/[\/\s]/.test(url) && !url.includes('://')) {
+    return `${GAS_URL}?id=${url}&token=${AUTH_TOKEN}`;
+  }
   return url;
 }
 
@@ -55,6 +59,14 @@ export function getGPSLocation() {
       { timeout: 7000, maximumAge: 60000 }
     );
   });
+}
+
+export function todayFormatted() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}/${mm}/${dd}`;
 }
 
 export function paymentDirectionOf(p) {

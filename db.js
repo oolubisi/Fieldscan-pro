@@ -1,14 +1,27 @@
 // db.js
 const DB_NAME = "FieldScanOfflineDB";
 const STORE_NAME = "syncQueue";
+const SNAG_PHOTO_STORE = "snagPhotos";
+
+let dbPromise = null;
 
 export function openQueueDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 2);
-    req.onupgradeneeded = (e) => { e.target.result.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true }); };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = (e) => reject(e.target.error);
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 3);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
+      if (!db.objectStoreNames.contains(SNAG_PHOTO_STORE)) db.createObjectStore(SNAG_PHOTO_STORE, { keyPath: "snagId" });
+    };
+    req.onsuccess = (e) => {
+      const db = e.target.result;
+      db.onclose = () => { dbPromise = null; };
+      resolve(db);
+    };
+    req.onerror = (e) => { dbPromise = null; reject(e.target.error); };
   });
+  return dbPromise;
 }
 
 export async function queueOfflineRequest(action, data) {
@@ -35,6 +48,39 @@ export async function deleteQueuedRequest(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
     tx.objectStore(STORE_NAME).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ======================== SNAG PHOTOS (LOCAL ONLY - NEVER SYNCED) ========================
+// Snag photos are intentionally kept on-device only and are never sent to the server
+// or uploaded to Google Drive. They live in this dedicated IndexedDB store, keyed by snagId.
+
+export async function saveSnagPhotosLocally(snagId, photoDataString) {
+  const db = await openQueueDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SNAG_PHOTO_STORE, "readwrite");
+    tx.objectStore(SNAG_PHOTO_STORE).put({ snagId, photoData: photoDataString, savedAt: Date.now() });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function getSnagPhotosLocally(snagId) {
+  const db = await openQueueDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(SNAG_PHOTO_STORE, "readonly").objectStore(SNAG_PHOTO_STORE).get(snagId);
+    req.onsuccess = () => resolve(req.result ? req.result.photoData : "");
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function deleteSnagPhotosLocally(snagId) {
+  const db = await openQueueDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SNAG_PHOTO_STORE, "readwrite");
+    tx.objectStore(SNAG_PHOTO_STORE).delete(snagId);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
