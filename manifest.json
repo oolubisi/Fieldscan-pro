@@ -1,0 +1,9 @@
+{
+  "name": "FieldScan Pro",
+  "short_name": "FieldScan",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0056b3",
+  "icons": []
+}
