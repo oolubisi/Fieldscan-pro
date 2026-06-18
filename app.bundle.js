@@ -162,8 +162,7 @@ function toggleTemplateSelection(tmplId, checked) {
 
 async function deleteSelectedTakeOffs() {
   if (!selectedTakeOffIds.size) return;
-  if (!confirm(`Delete ${selectedTakeOffIds.size} selected take-off items?`))
-    return;
+  if (!confirm(`Delete ${selectedTakeOffIds.size} selected take-off items?`)) return;
   const projectId = getCurrentProjectId();
   const cache = getCache();
   for (const itemId of Array.from(selectedTakeOffIds)) {
@@ -181,8 +180,7 @@ async function deleteSelectedTakeOffs() {
 
 function deleteSelectedTemplates() {
   if (!selectedTemplateIds.size) return;
-  if (!confirm(`Delete ${selectedTemplateIds.size} selected custom templates?`))
-    return;
+  if (!confirm(`Delete ${selectedTemplateIds.size} selected custom templates?`)) return;
   const custom = getCustomTemplates();
   const remaining = custom.filter((t) => !selectedTemplateIds.has(t.id));
   saveCustomTemplates(remaining);
@@ -825,8 +823,12 @@ function saveCustomTemplates(templates) {
 function getHiddenBuiltInIds() {
   try {
     const raw = localStorage.getItem("fb_hiddenBuiltInTemplates");
-    if (raw) return new Set(JSON.parse(raw));
-    // First visit: hide all built-in templates by default
+    const hasVisited = localStorage.getItem("fb_templatesVisited");
+    if (hasVisited && raw !== null) {
+      return new Set(JSON.parse(raw));
+    }
+    // First visit ever: hide all built-in templates by default
+    localStorage.setItem("fb_templatesVisited", "true");
     const allBuiltInIds = new Set(getBuiltInTemplates().map((t) => t.id));
     saveHiddenBuiltInIds(allBuiltInIds);
     return allBuiltInIds;
@@ -836,10 +838,7 @@ function getHiddenBuiltInIds() {
 }
 
 function saveHiddenBuiltInIds(ids) {
-  localStorage.setItem(
-    "fb_hiddenBuiltInTemplates",
-    JSON.stringify(Array.from(ids)),
-  );
+  localStorage.setItem("fb_hiddenBuiltInTemplates", JSON.stringify(Array.from(ids)));
 }
 
 function hideBuiltInTemplate(id) {
@@ -4233,12 +4232,95 @@ window.addEventListener("online", syncQueuedRequests);
 window.addEventListener("offline", updateSyncStatus);
 
 // Initial load
+/* ---------- PWA Install ---------- */
+let installPromptEvent = null;
+
+function initPwaInstall() {
+  const btn = document.getElementById("pwa-install-btn");
+  if (!btn) return;
+
+  // Android / Chrome: beforeinstallprompt
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installPromptEvent = e;
+    btn.style.display = "inline-flex";
+  });
+
+  // Hide button after install
+  window.addEventListener("appinstalled", () => {
+    installPromptEvent = null;
+    btn.style.display = "none";
+  });
+
+  btn.addEventListener("click", async () => {
+    if (!installPromptEvent) {
+      // iOS Safari or already installed
+      showIosInstallHint();
+      return;
+    }
+    try {
+      await installPromptEvent.prompt();
+      const result = await installPromptEvent.userChoice;
+      if (result.outcome === "accepted") {
+        btn.style.display = "none";
+      }
+      installPromptEvent = null;
+    } catch (err) {
+      console.error("Install prompt failed:", err);
+      showIosInstallHint();
+    }
+  });
+
+  // Check if already installed (standalone mode)
+  if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true) {
+    btn.style.display = "none";
+  }
+}
+
+function showIosInstallHint() {
+  const body = document.getElementById("modalBody");
+  const submit = document.getElementById("modalSubmit");
+  const title = document.getElementById("modalTitle");
+  const overlay = document.getElementById("modalOverlay");
+  title.innerText = "Install FieldScan Pro";
+  overlay.style.display = "flex";
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (isIos) {
+    body.innerHTML = `
+      <p style="font-size:15px; line-height:1.5;">
+        To install on iPhone/iPad:
+      </p>
+      <ol style="font-size:15px; line-height:1.6; padding-left:20px;">
+        <li>Tap the <strong>Share</strong> button <i class="fas fa-share-square" style="color:var(--primary);"></i> in Safari's toolbar.</li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+        <li>Tap <strong>Add</strong> in the top right.</li>
+      </ol>
+      <p style="font-size:13px; color:var(--muted); margin-top:10px;">Once installed, open from your home screen for full-screen experience.</p>
+    `;
+  } else {
+    body.innerHTML = `
+      <p style="font-size:15px; line-height:1.5;">
+        To install this app on your device:
+      </p>
+      <ol style="font-size:15px; line-height:1.6; padding-left:20px;">
+        <li>Open your browser menu (usually <i class="fas fa-ellipsis-v" style="color:var(--primary);"></i>).</li>
+        <li>Look for <strong>Add to Home Screen</strong> or <strong>Install App</strong>.</li>
+        <li>Follow the prompts to add the icon to your home screen.</li>
+      </ol>
+    `;
+  }
+  submit.style.display = "block";
+  submit.innerText = "Close";
+  submit.onclick = closeModal;
+}
+
 window.addEventListener("load", () => {
   if (appStarted) return;
   appStarted = true;
   updateSyncStatus();
   showPageWithoutRefresh("dashboard");
   refreshMasterDashboard();
+  initPwaInstall();
   callApi("getSettings", {})
     .then((res) => {
       const cache = getCache();

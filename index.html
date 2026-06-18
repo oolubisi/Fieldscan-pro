@@ -19,7 +19,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="style.css" />
-    <base target="_blank" />
   </head>
   <body>
     <div class="main">
@@ -43,6 +42,22 @@
             display: none;
           "
         ></div>
+        <button
+          id="pwa-install-btn"
+          class="action-btn"
+          style="
+            width: auto;
+            padding: 8px 14px;
+            font-size: 12px;
+            border-radius: 20px;
+            display: none;
+            align-items: center;
+            gap: 6px;
+            background: var(--primary);
+          "
+        >
+          <i class="fas fa-download"></i> Install App
+        </button>
       </div>
 
       <!-- Segment Bar -->
