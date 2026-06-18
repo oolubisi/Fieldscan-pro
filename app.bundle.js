@@ -4235,27 +4235,27 @@ window.addEventListener("offline", updateSyncStatus);
 /* ---------- PWA Install ---------- */
 let installPromptEvent = null;
 
+// Attach BEFORE window.load — the event fires during page load
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPromptEvent = e;
+  const btn = document.getElementById("pwa-install-btn");
+  if (btn) btn.style.display = "inline-flex";
+});
+
+window.addEventListener("appinstalled", () => {
+  installPromptEvent = null;
+  const btn = document.getElementById("pwa-install-btn");
+  if (btn) btn.style.display = "none";
+});
+
 function initPwaInstall() {
   const btn = document.getElementById("pwa-install-btn");
   if (!btn) return;
 
-  // Android / Chrome: beforeinstallprompt
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    installPromptEvent = e;
-    btn.style.display = "inline-flex";
-  });
-
-  // Hide button after install
-  window.addEventListener("appinstalled", () => {
-    installPromptEvent = null;
-    btn.style.display = "none";
-  });
-
   btn.addEventListener("click", async () => {
     if (!installPromptEvent) {
-      // iOS Safari or already installed
-      showIosInstallHint();
+      showInstallFallback();
       return;
     }
     try {
@@ -4267,43 +4267,52 @@ function initPwaInstall() {
       installPromptEvent = null;
     } catch (err) {
       console.error("Install prompt failed:", err);
-      showIosInstallHint();
+      showInstallFallback();
     }
   });
 
-  // Check if already installed (standalone mode)
+  // If already installed, hide button
   if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true) {
     btn.style.display = "none";
+    return;
   }
+
+  // Fallback: if no install prompt after 3s, show manual button anyway
+  setTimeout(() => {
+    if (!installPromptEvent && btn.style.display === "none") {
+      btn.style.display = "inline-flex";
+      btn.innerHTML = '<i class="fas fa-download"></i> Add to Home Screen';
+    }
+  }, 3000);
 }
 
-function showIosInstallHint() {
+function showInstallFallback() {
+  const isAndroid = /Android/.test(navigator.userAgent);
   const body = document.getElementById("modalBody");
   const submit = document.getElementById("modalSubmit");
   const title = document.getElementById("modalTitle");
   const overlay = document.getElementById("modalOverlay");
-  title.innerText = "Install FieldScan Pro";
+  title.innerText = "Add to Home Screen";
   overlay.style.display = "flex";
-  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  if (isIos) {
+  if (isAndroid) {
     body.innerHTML = `
       <p style="font-size:15px; line-height:1.5;">
-        To install on iPhone/iPad:
+        To install on Android:
       </p>
       <ol style="font-size:15px; line-height:1.6; padding-left:20px;">
-        <li>Tap the <strong>Share</strong> button <i class="fas fa-share-square" style="color:var(--primary);"></i> in Safari's toolbar.</li>
-        <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
-        <li>Tap <strong>Add</strong> in the top right.</li>
+        <li>Tap the <strong>menu</strong> button <i class="fas fa-ellipsis-v" style="color:var(--primary);"></i> in Chrome.</li>
+        <li>Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>.</li>
+        <li>Tap <strong>Add</strong> or <strong>Install</strong>.</li>
       </ol>
-      <p style="font-size:13px; color:var(--muted); margin-top:10px;">Once installed, open from your home screen for full-screen experience.</p>
+      <p style="font-size:13px; color:var(--muted); margin-top:10px;">Once added, open from your home screen for full-screen experience.</p>
     `;
   } else {
     body.innerHTML = `
       <p style="font-size:15px; line-height:1.5;">
-        To install this app on your device:
+        To install this app:
       </p>
       <ol style="font-size:15px; line-height:1.6; padding-left:20px;">
-        <li>Open your browser menu (usually <i class="fas fa-ellipsis-v" style="color:var(--primary);"></i>).</li>
+        <li>Open your browser menu.</li>
         <li>Look for <strong>Add to Home Screen</strong> or <strong>Install App</strong>.</li>
         <li>Follow the prompts to add the icon to your home screen.</li>
       </ol>
