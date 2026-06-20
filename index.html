@@ -18,7 +18,10 @@
     />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <link rel="stylesheet" href="style.css" />
+    <base target="_blank" />
+    <base target="_blank" />
   </head>
   <body>
     <div class="main">
@@ -214,6 +217,7 @@
             <option value="snags">Snags Report</option>
             <option value="progress">Progress Report</option>
             <option value="takeoff">Take-Off Report</option>
+            <option value="workorder_report">Work Orders</option>
           </select>
 
           <label>Scope</label>
@@ -228,13 +232,32 @@
             <label id="rep-filter-label">Select</label>
             <select id="rep-filter-sel"></select>
           </div>
+          <div id="rep-workorder-wrap" style="margin-top: 10px; display: none">
+            <label>Select Work Order</label>
+            <select id="rep-workorder-sel"></select>
+          </div>
 
-          <button
-            class="action-btn"
-            style="margin-top: 15px"
-            onclick="compileFieldReport()"
+          <div
+            id="rep-orientation-wrap"
+            style="margin-top: 10px; display: none"
           >
-            Generate Report
+            <label>Paper Orientation</label>
+            <select
+              id="rep-orientation-sel"
+              style="
+                width: 100%;
+                padding: 14px;
+                font-size: 16px;
+                border-radius: 12px;
+                border: 1.5px solid var(--border);
+              "
+            >
+              <option value="portrait">Portrait (A4)</option>
+              <option value="landscape">Landscape (A4)</option>
+            </select>
+          </div>
+          <button class="action-btn" onclick="compileFieldReport(this)">
+            <i class="fas fa-file-alt"></i> Generate Report
           </button>
         </div>
         <div
@@ -253,19 +276,8 @@
             >
               <i class="fas fa-file-pdf"></i> Save PDF
             </button>
-            <button
-              class="action-btn"
-              style="flex: 1; min-width: 120px; background: #25d366"
-              onclick="shareReportWhatsApp()"
-            >
-              <i class="fab fa-whatsapp"></i> WhatsApp
-            </button>
-            <button
-              class="action-btn"
-              style="flex: 1; min-width: 120px; background: #495057"
-              onclick="shareReportEmail()"
-            >
-              <i class="fas fa-envelope"></i> Email
+            <button class="action-btn" onclick="shareReport()">
+              <i class="fas fa-share-alt"></i> Share
             </button>
           </div>
         </div>
@@ -314,13 +326,6 @@
             onclick="switchConsoleSegment('scope')"
           >
             Scope
-          </button>
-          <button
-            class="segment-btn"
-            id="seg-btn-inspections"
-            onclick="switchConsoleSegment('inspections')"
-          >
-            Inspections
           </button>
           <button
             class="segment-btn"
@@ -492,29 +497,6 @@
               Save Scope
             </button>
           </div>
-        </div>
-        <div id="console-seg-inspections" class="console-tab-window page-view">
-          <div id="console-inspections-list"></div>
-          <button
-            class="action-btn"
-            style="margin-top: 10px"
-            onclick="openModal('inspection', null)"
-          >
-            + New Inspection
-          </button>
-        </div>
-        <div id="console-seg-takeoff" class="console-tab-window page-view">
-          <div id="console-takeoff-list"></div>
-          <button
-            class="action-btn"
-            style="margin-top: 10px"
-            onclick="openModal('takeoff_item', null)"
-          >
-            + New Take‑Off
-          </button>
-        </div>
-        <div id="console-seg-templates" class="console-tab-window page-view">
-          <div id="console-templates-list"></div>
         </div>
         <div id="console-seg-progress" class="console-tab-window page-view">
           <div id="console-progress-feed"></div>
