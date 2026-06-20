@@ -3,7 +3,14 @@
   padding: 0;
   box-sizing: border-box;
   user-select: none;
+  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+input,
+select,
+textarea {
+  user-select: auto;
+  -webkit-user-select: auto;
 }
 :root {
   --bg: #ffffff;
@@ -43,8 +50,14 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .home-btn {
   background: var(--text);
@@ -257,6 +270,25 @@ input[type="checkbox"] {
 .report-table tr:nth-child(even) {
   background: #f8f9fa;
 }
+.report-page-wrapper {
+  position: relative;
+  min-height: calc(297mm - 30mm);
+}
+.report-page-wrapper > .report-content {
+  /* content flows naturally */
+}
+.report-footer {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  padding-top: 12px;
+  border-top: 1px solid #adb5bd;
+  font-size: 10px;
+  color: #495057;
+  line-height: 1.5;
+  text-align: center;
+}
 
 /* Snags Report 2x3 Grid */
 .snags-report-page {
@@ -322,6 +354,27 @@ input[type="checkbox"] {
     page-break-inside: avoid;
   }
   .accounts-row {
+    page-break-inside: avoid;
+  }
+  .report-page-wrapper {
+    position: relative;
+    min-height: calc(297mm - 30mm);
+    page-break-inside: avoid;
+  }
+  .report-page-wrapper > .report-content {
+    /* content flows naturally */
+  }
+  .report-footer {
+    position: absolute;
+    bottom: 8px;
+    left: 0;
+    right: 0;
+    padding-top: 12px;
+    border-top: 1px solid #adb5bd;
+    font-size: 10px;
+    color: #495057;
+    line-height: 1.5;
+    text-align: center;
     page-break-inside: avoid;
   }
 }
