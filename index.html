@@ -256,6 +256,25 @@
               <option value="landscape">Landscape (A4)</option>
             </select>
           </div>
+          <div
+            id="rep-orientation-wrap"
+            style="margin-top: 10px; display: none"
+          >
+            <label>Paper Orientation</label>
+            <select
+              id="rep-orientation-sel"
+              style="
+                width: 100%;
+                padding: 14px;
+                font-size: 16px;
+                border-radius: 12px;
+                border: 1.5px solid var(--border);
+              "
+            >
+              <option value="portrait">Portrait (A4)</option>
+              <option value="landscape">Landscape (A4)</option>
+            </select>
+          </div>
           <button class="action-btn" onclick="compileFieldReport(this)">
             <i class="fas fa-file-alt"></i> Generate Report
           </button>
@@ -498,6 +517,21 @@
             </button>
           </div>
         </div>
+        <div id="console-seg-takeoff" class="console-tab-window page-view">
+          <div id="console-takeoff-list"></div>
+          <button
+            class="action-btn"
+            style="margin-top: 10px"
+            onclick="openModal('takeoff_item', null)"
+          >
+            + New Take‑Off
+          </button>
+        </div>
+
+        <div id="console-seg-templates" class="console-tab-window page-view">
+          <div id="console-templates-list"></div>
+        </div>
+
         <div id="console-seg-progress" class="console-tab-window page-view">
           <div id="console-progress-feed"></div>
           <button
