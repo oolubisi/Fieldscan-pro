@@ -3,7 +3,7 @@
 
 // ===== config.js =====
 const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbwQ5HeJP9_msrGeaHRpqn9cgXYwwV48oLS2uBb-F8S90rwprmtoSONpM1UxSECWw41v/exec";
+  "https://script.google.com/macros/s/AKfycbwR807UD_syLAYGZLsDsowJNP71WLFWxNDkYuX-tu2jwemQE0INPt7TEFjrL07VhjRL/exec";
 const AUTH_TOKEN = "FieldScan2025!SecureToken";
 const ATTACHMENT_DELIMITER = "|||";
 
@@ -1454,6 +1454,7 @@ const GET_ACTION_BY_STORE = {
 const MUTATION_MAP = {
   saveProject: { store: "projects", idKey: "projectId", mode: "upsert" },
   updateProject: { store: "projects", idKey: "projectId", mode: "upsert" },
+  updateProjectScope: { store: "projects", idKey: "projectId", mode: "upsert" },
   saveTakeOffItem: { store: "takeoffs", idKey: "itemId", mode: "upsert" },
   updateTakeOffItem: { store: "takeoffs", idKey: "itemId", mode: "upsert" },
   deleteTakeOffItem: { store: "takeoffs", idKey: "itemId", mode: "delete" },
@@ -1859,6 +1860,23 @@ function generateReportHeader(title, project, settings) {
     html += `<div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #adb5bd; font-size: 12px; line-height: 1.6;"><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px 20px;"><div><strong style="color:#000;">Client:</strong> ${escapeHtml(project.clientName || "—")}</div><div><strong style="color:#000;">Project ID:</strong> ${escapeHtml(project.projectId || "—")}</div><div><strong style="color:#000;">Location:</strong> ${escapeHtml(project.siteLocation || "—")}</div><div><strong style="color:#000;">Phone:</strong> ${escapeHtml(project.clientPhone || "—")}</div></div></div>`;
   html += `</div>`;
   return html;
+}
+
+function generateSignatureBlock() {
+  return `<div style="margin-top: 32px; page-break-inside: avoid;">
+    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; color: #495057;">Authorized Signatory</div>
+    <div style="display: inline-block; text-align: center;">
+      <div style="border-bottom: 1.5px solid #000; width: 200px; margin: 0 auto 4px auto;"></div>
+      <div style="font-size: 12px; font-weight: 700;">_________________________</div>
+    </div>
+  </div>`;
+}
+
+function generateReportFooter() {
+  return `<div class="report-footer">
+    <div style="font-weight: 700; margin-bottom: 4px;">Road 1 House 5B, Isheri-Brooks Estate, Isheri-Olofin, Ogun State</div>
+    <div>+234 809 260 8103&nbsp;&nbsp;&nbsp;+234 708 260 8103&nbsp;&nbsp;&nbsp;pi.projects20@gmail.com</div>
+  </div>`;
 }
 
 function computeProjectFinancials(project, payments) {
@@ -2375,7 +2393,7 @@ async function compileFieldReport(btn) {
       if (!cache.settings || !cache.settings.VAT) {
         try {
           const res = await callApi("getSettings", {});
-          cache.settings = res && res.data ? res.data : cache.settings || {};
+          cache.settings = res || cache.settings || {};
           setCache(cache);
         } catch (e) {
           console.warn("Could not load settings for report:", e);
@@ -3307,11 +3325,20 @@ ${projects.map((p) => `<option value="${escapeAttr(p.clientName)}" data-project-
       window.onPaymentDirectionChange();
     };
     window.recalcPaymentBalance();
+    document.getElementById("pay_amount").addEventListener("input", () => {
+      if (document.getElementById("pay_dir").value === "Small Expense") {
+        const amt = document.getElementById("pay_amount").value;
+        document.getElementById("pay_total_invoice").value = amt;
+        window.recalcPaymentBalance();
+      }
+    });
     submit.onclick = () => {
+      const direction = document.getElementById("pay_dir").value;
+      const isSmall = direction === "Small Expense";
       const totalInvoice = roundMoney(
         Number(document.getElementById("pay_total_invoice").value) || 0,
       );
-      if (!totalInvoice || totalInvoice <= 0) {
+      if (!isSmall && (!totalInvoice || totalInvoice <= 0)) {
         alert("Enter a valid Total Invoice amount");
         return;
       }
@@ -3327,8 +3354,6 @@ ${projects.map((p) => `<option value="${escapeAttr(p.clientName)}" data-project-
         alert("Enter a valid payment amount");
         return;
       }
-      const direction = document.getElementById("pay_dir").value;
-      const isSmall = direction === "Small Expense";
       const stage = isSmall ? "" : document.getElementById("pay_stage").value;
       if (!isSmall && stage) {
         const balanceText = document
@@ -3356,7 +3381,7 @@ ${projects.map((p) => `<option value="${escapeAttr(p.clientName)}" data-project-
         expenseCategory: document.getElementById("pay_cat").value,
         referenceId: "",
         amount: stageAmount,
-        totalInvoice: totalInvoice,
+        totalInvoice: isSmall ? stageAmount : totalInvoice,
         paymentMethod: document.getElementById("pay_method").value,
         status: "",
         stage: stage,
@@ -3772,8 +3797,16 @@ async function refreshMasterDashboard() {
       '<p style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading projects...</p>';
   try {
     const projects = await callApi("getProjects", {});
+    console.log("getProjects response:", projects);
+    if (!Array.isArray(projects)) {
+      console.error("getProjects returned non-array:", projects);
+      if (container)
+        container.innerHTML =
+          '<p style="text-align:center;padding:20px;color:red;">Server returned invalid data. Check console.</p>';
+      return;
+    }
     const cache = getCache();
-    cache.projects = projects || [];
+    cache.projects = projects;
     setCache(cache);
     renderProjects();
   } catch (e) {
@@ -3790,10 +3823,20 @@ function renderProjects() {
   if (!container || !searchEl) return;
   const term = searchEl.value.toLowerCase();
   const cache = getCache();
+  if (!Array.isArray(cache.projects)) {
+    console.error(
+      "renderProjects: cache.projects is not an array",
+      cache.projects,
+    );
+    container.innerHTML =
+      '<p style="text-align:center;padding:20px;color:red;">Data error: projects corrupted. Try Refresh.</p>';
+    return;
+  }
   const filtered = cache.projects.filter(
     (p) =>
-      p.clientName?.toLowerCase().includes(term) ||
-      p.projectId?.toLowerCase().includes(term),
+      p &&
+      (p.clientName?.toLowerCase().includes(term) ||
+        p.projectId?.toLowerCase().includes(term)),
   );
   if (!filtered.length) {
     container.innerHTML =
@@ -4237,8 +4280,10 @@ async function callApi(action, data = {}) {
     alert(`⚠️ Save failed: ${message}`);
     throw new Error(message);
   }
-  if (isGet) writeBackup(action, result);
-  return result;
+  const returnValue =
+    isGet && result && result.data !== undefined ? result.data : result;
+  if (isGet) writeBackup(action, returnValue);
+  return returnValue;
 }
 
 const DEPENDENCY_ORDER = {
@@ -4402,9 +4447,9 @@ async function refreshAllData() {
     await callApi("getWorkOrders", {});
     await callApi("getPayments", {});
     const settingsRes = await callApi("getSettings", {});
-    if (settingsRes && settingsRes.data) {
+    if (settingsRes && typeof settingsRes === "object") {
       const cache = getCache();
-      cache.settings = settingsRes.data;
+      cache.settings = settingsRes;
       setCache(cache);
     }
     await refreshMasterDashboard();
@@ -4584,7 +4629,7 @@ window.addEventListener("load", () => {
   callApi("getSettings", {})
     .then((res) => {
       const cache = getCache();
-      cache.settings = res && res.data ? res.data : {};
+      cache.settings = res || {};
       setCache(cache);
     })
     .catch(() => {});
