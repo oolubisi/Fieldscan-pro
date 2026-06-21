@@ -1,9 +1,9 @@
-const CACHE_NAME = "fieldscan-pro-v1";
+const CACHE_NAME = "fieldscan-pro-v2";
 const urlsToCache = [
   "./",
   "./index.html",
   "./style.css",
-  "./app.bundle.js",
+  "./app_bundle.js",
   "https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap",
   "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css",
   "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",

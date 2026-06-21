@@ -21,7 +21,6 @@
     <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <link rel="stylesheet" href="style.css" />
     <base target="_blank" />
-    <base target="_blank" />
   </head>
   <body>
     <div class="main">
@@ -96,6 +95,9 @@
           onclick="refreshAllData()"
         >
           <i class="fas fa-database"></i> Refresh
+        </button>
+        <button class="segment-btn" onclick="showPage('letterhead')">
+          <i class="fas fa-envelope"></i> Letterhead
         </button>
       </div>
 
@@ -256,25 +258,6 @@
               <option value="landscape">Landscape (A4)</option>
             </select>
           </div>
-          <div
-            id="rep-orientation-wrap"
-            style="margin-top: 10px; display: none"
-          >
-            <label>Paper Orientation</label>
-            <select
-              id="rep-orientation-sel"
-              style="
-                width: 100%;
-                padding: 14px;
-                font-size: 16px;
-                border-radius: 12px;
-                border: 1.5px solid var(--border);
-              "
-            >
-              <option value="portrait">Portrait (A4)</option>
-              <option value="landscape">Landscape (A4)</option>
-            </select>
-          </div>
           <button class="action-btn" onclick="compileFieldReport(this)">
             <i class="fas fa-file-alt"></i> Generate Report
           </button>
@@ -301,6 +284,85 @@
           </div>
         </div>
         <div id="report-print-container" style="display: none"></div>
+      </div>
+
+      <!-- Letterhead View -->
+      <div id="view-letterhead" class="page-view">
+        <div class="card">
+          <h3 style="margin-bottom: 15px; font-size: 18px; font-weight: 800">
+            <i class="fas fa-envelope"></i> Letter Editor
+          </h3>
+          <label>Date</label>
+          <input type="text" id="letter-date" placeholder="e.g. 21 June 2026" />
+          <label>Client Name</label>
+          <input
+            type="text"
+            id="letter-client-name"
+            placeholder="Client name"
+          />
+          <label>Client Address</label>
+          <textarea
+            id="letter-client-address"
+            rows="2"
+            placeholder="Client address"
+          ></textarea>
+          <label>Salutation</label>
+          <input type="text" id="letter-salutation" value="Dear Sir/Madam," />
+          <label>Title</label>
+          <input
+            type="text"
+            id="letter-title"
+            placeholder="Letter title / subject"
+            style="font-size: 18px; font-weight: 700"
+          />
+          <label>Body</label>
+          <textarea
+            id="letter-body"
+            rows="8"
+            placeholder="Type the body of your letter here..."
+          ></textarea>
+          <label>Signatory Name</label>
+          <input
+            type="text"
+            id="letter-signatory"
+            placeholder="e.g. John Doe"
+          />
+          <label>Signatory Title</label>
+          <input
+            type="text"
+            id="letter-signatory-title"
+            placeholder="e.g. Managing Director"
+          />
+          <button
+            class="action-btn"
+            style="margin-top: 15px"
+            onclick="printLetterhead()"
+          >
+            <i class="fas fa-print"></i> Print Letter
+          </button>
+        </div>
+        <div
+          id="letterhead-preview-card"
+          class="card"
+          style="display: none; background: white"
+        >
+          <div id="letterhead-preview"></div>
+          <div
+            style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap"
+          >
+            <button
+              class="action-btn"
+              style="flex: 1; min-width: 120px"
+              onclick="saveLetterheadPDF()"
+            >
+              <i class="fas fa-file-pdf"></i> Save PDF
+            </button>
+            <button class="action-btn" onclick="shareLetterheadPDF()">
+              <i class="fas fa-share-alt"></i> Share
+            </button>
+          </div>
+        </div>
+        <div id="letterhead-print-container" style="display: none"></div>
       </div>
 
       <!-- Project Console -->

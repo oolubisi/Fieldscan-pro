@@ -12,10 +12,12 @@ let selectedTemplateIds = new Set();
 
 // ===== utils.js =====
 function escapeHtml(str) {
-  return String(str ?? "").replace(/[&<>]/g, function (m) {
+  return String(str ?? "").replace(/[&<>"']/g, function (m) {
     if (m === "&") return "&amp;";
     if (m === "<") return "&lt;";
     if (m === ">") return "&gt;";
+    if (m === '"') return "&quot;";
+    if (m === "'") return "&#39;";
     return m;
   });
 }
@@ -101,6 +103,31 @@ function hidePdfCompressing() {
   if (overlay) overlay.style.display = "none";
 }
 
+// Non-blocking toast notification — replaces alert() for sync messages
+function showSyncToast(message, durationMs = 3000) {
+  let toast = document.getElementById("fieldscan-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "fieldscan-toast";
+    toast.style.cssText =
+      "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);" +
+      "background:#000;color:#fff;padding:12px 20px;border-radius:14px;" +
+      "font-size:14px;font-weight:700;z-index:7000;max-width:90%;text-align:center;" +
+      "box-shadow:0 4px 16px rgba(0,0,0,0.3);transition:opacity 0.3s;";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.style.opacity = "1";
+  toast.style.display = "block";
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => {
+    toast.style.opacity = "0";
+    setTimeout(() => {
+      toast.style.display = "none";
+    }, 300);
+  }, durationMs);
+}
+
 async function compressPdfToTargetLimit(base64, maxBytes = 300000) {
   if (typeof PDFLib === "undefined") {
     throw new Error(
@@ -157,10 +184,18 @@ Continue?`)
 
 function getDirectImageUrl(url) {
   if (!url || url.startsWith("data:")) return url;
-  const match = url.match(/\/d\/(.+?)\//) || url.match(/id=([^&]+)/);
-  if (match && match[1]) {
-    return `${GAS_URL}?id=${match[1]}&token=${AUTH_TOKEN}`;
+  // Extract Drive file ID from various URL formats:
+  // /file/d/{ID}/, ?id={ID}, /open?id={ID}, /uc?export=view&id={ID}, /d/{ID}
+  const patterns = [
+    /\/file\/d\/([a-zA-Z0-9_-]+)/,
+    /[?&]id=([a-zA-Z0-9_-]+)/,
+    /\/d\/([a-zA-Z0-9_-]+)/,
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m && m[1]) return `${GAS_URL}?id=${m[1]}&token=${AUTH_TOKEN}`;
   }
+  // Bare Drive file ID (no slashes or protocol)
   if (!/[\/\s]/.test(url) && !url.includes("://")) {
     return `${GAS_URL}?id=${url}&token=${AUTH_TOKEN}`;
   }
@@ -186,7 +221,7 @@ function todayFormatted() {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}/${mm}/${dd}`;
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 function paymentDirectionOf(p) {
@@ -1337,6 +1372,35 @@ Quantities will be set to 0 for field measurement.`)
 }
 
 // ===== db.js =====
+// Seed in-memory cache from localStorage backups so the app has data
+// immediately on page load without waiting for the network.
+(function seedCacheFromBackup() {
+  const seeds = [
+    { key: "projects", action: "getProjects", isArray: true },
+    { key: "takeoffs", action: "getTakeOffItems", isArray: true },
+    { key: "progressLogs", action: "getProgressLogs", isArray: true },
+    { key: "snags", action: "getSnags", isArray: true },
+    { key: "vendors", action: "getVendors", isArray: true },
+    { key: "workorders", action: "getWorkOrders", isArray: true },
+    { key: "payments", action: "getPayments", isArray: true },
+    { key: "settings", action: "getSettings", isArray: false },
+  ];
+  seeds.forEach(({ key, action, isArray }) => {
+    try {
+      const raw = localStorage.getItem(`fb_${action}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (
+          isArray ? Array.isArray(parsed) : parsed && typeof parsed === "object"
+        ) {
+          cache[key] = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("seedCacheFromBackup failed for", key, e);
+    }
+  });
+})();
 const DB_NAME = "FieldScanOfflineDB";
 const STORE_NAME = "syncQueue";
 const SNAG_PHOTO_STORE = "snagPhotos";
@@ -2393,7 +2457,7 @@ async function compileFieldReport(btn) {
       if (!cache.settings || !cache.settings.VAT) {
         try {
           const res = await callApi("getSettings", {});
-          cache.settings = res && res.data ? res.data : cache.settings || {};
+          cache.settings = res || cache.settings || {};
           setCache(cache);
         } catch (e) {
           console.warn("Could not load settings for report:", e);
@@ -3759,34 +3823,71 @@ function renderWorkOrderDetailReport(workorder, project, vendors, settings) {
     </div>`;
   }
 
-  return `${generateReportHeader("Work Order", project)}
-    <div style="margin-bottom: 16px; font-size: 12px; line-height: 1.6;">
-      <div><strong>Work Order ID:</strong> ${escapeHtml(workorder.workOrderId)}</div>
-      <div><strong>Vendor:</strong> ${escapeHtml(vendor ? vendor.company : workorder.vendorId)}${vendor && vendor.trade ? ` (${escapeHtml(vendor.trade)})` : ""}</div>
-      <div><strong>Contact:</strong> ${escapeHtml(vendor ? vendor.contactName : "—")}</div>
-      <div><strong>Phone:</strong> ${escapeHtml(vendor ? vendor.phone1 : "—")}</div>
-      <div><strong>Status:</strong> ${escapeHtml(workorder.status)}</div>
+  const dateStr = new Date().toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const logoUrl =
+    settings && settings.Logo ? getDirectImageUrl(settings.Logo) : "";
+  const signName =
+    settings && settings.Name_Signed ? escapeHtml(settings.Name_Signed) : "";
+  const signImg =
+    settings && settings.Sign_Signed
+      ? getDirectImageUrl(settings.Sign_Signed)
+      : "";
+
+  let headerHtml = `<div class="report-header" style="border-bottom: 2.5px solid #000; padding-bottom: 2px; margin-bottom: 18px;"><div style="display: flex; justify-content: space-between; align-items: flex-end;">`;
+  headerHtml += `<div style="flex:1;"><div style="font-size: 11px; color: #495057; font-weight: 600; margin-bottom: 2px;">${escapeHtml(dateStr)}</div><div style="font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #495057; line-height: 1.1;">Work Order</div></div>`;
+  if (logoUrl) {
+    headerHtml += `<div style="flex-shrink:0; margin-left:16px; text-align:right;"><img src="${escapeAttr(logoUrl)}" style="max-height:120px; max-width:280px; object-fit:contain;" onerror="this.style.display='none'"></div>`;
+  }
+  headerHtml += `</div>`;
+  headerHtml += `<div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #adb5bd; font-size: 12px; line-height: 1.6;"><div style="display: flex; justify-content: space-between; align-items: baseline;"><div><strong style="color:#000;">Project ID:</strong> ${escapeHtml(project.projectId || "—")}</div><div style="font-size:16px;"><strong style="color:#000;">Work Order ID:</strong> ${escapeHtml(workorder.workOrderId || "—")}</div></div></div>`;
+  headerHtml += `</div>`;
+
+  let signatureBlock = `<div style="margin-top: 32px; page-break-inside: avoid; text-align: left;">
+    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; color: #495057;">Authorized Signatory</div>
+    <div style="display: inline-block; text-align: center;">
+      ${signImg ? `<div style="margin-bottom: 4px;"><img src="${escapeAttr(signImg)}" style="max-height:50px; max-width:150px; object-fit:contain;" onerror="this.style.display='none'"></div>` : ""}
+      <div style="border-bottom: 1.5px solid #000; width: 200px; margin: 0 auto 4px auto;"></div>
+      <div style="font-size: 12px; font-weight: 700;">${signName || "_________________________"}</div>
     </div>
-    <table class="report-table" style="width:100%; border-collapse: collapse; font-size:12px; margin-bottom: 16px;">
-      <thead>
-        <tr>
-          <th style="background:#000; color:#fff; text-align:left; padding:8px; font-size:10px; text-transform:uppercase;">Description</th>
-          <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:60px;">Qty</th>
-          <th style="background:#000; color:#fff; text-align:center; padding:8px; font-size:10px; text-transform:uppercase; width:70px;">U/M</th>
-          <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:90px;">Rate (₦)</th>
-          <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:90px;">Amount (₦)</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemRows}
-        <tr style="background:#e9ecef; font-weight:900;">
-          <td colspan="4" style="border-bottom:2px solid #000; padding:8px; font-size:12px;"><strong>TOTAL WORK ORDER VALUE</strong></td>
-          <td style="border-bottom:2px solid #000; padding:8px; font-size:12px; text-align:right;">₦${moneyValue(totalWO)}</td>
-        </tr>
-      </tbody>
-    </table>
-    ${notesHtml}
-    ${termsHtml}`;
+  </div>`;
+
+  return `<div class="report-page-wrapper">
+    <div class="report-content">
+      ${headerHtml}
+      <div style="margin-bottom: 16px; font-size: 12px; line-height: 1.6;">
+        <div><strong>Vendor:</strong> ${escapeHtml(vendor ? vendor.company : workorder.vendorId)}${vendor && vendor.trade ? ` (${escapeHtml(vendor.trade)})` : ""}</div>
+        <div><strong>Contact:</strong> ${escapeHtml(vendor ? vendor.contactName : "—")}</div>
+        <div><strong>Phone:</strong> ${escapeHtml(vendor ? vendor.phone1 : "—")}</div>
+        <div><strong>Status:</strong> ${escapeHtml(workorder.status)}</div>
+      </div>
+      <table class="report-table" style="width:100%; border-collapse: collapse; font-size:12px; margin-bottom: 16px;">
+        <thead>
+          <tr>
+            <th style="background:#000; color:#fff; text-align:left; padding:8px; font-size:10px; text-transform:uppercase;">Description</th>
+            <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:60px;">Qty</th>
+            <th style="background:#000; color:#fff; text-align:center; padding:8px; font-size:10px; text-transform:uppercase; width:70px;">U/M</th>
+            <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:90px;">Rate (₦)</th>
+            <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:90px;">Amount (₦)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemRows}
+          <tr style="background:#e9ecef; font-weight:900;">
+            <td colspan="4" style="border-bottom:2px solid #000; padding:8px; font-size:12px;"><strong>TOTAL WORK ORDER VALUE</strong></td>
+            <td style="border-bottom:2px solid #000; padding:8px; font-size:12px; text-align:right;">₦${moneyValue(totalWO)}</td>
+          </tr>
+        </tbody>
+      </table>
+      ${notesHtml}
+      ${termsHtml}
+      ${signatureBlock}
+    </div>
+    ${generateReportFooter()}
+  </div>`;
 }
 
 // ===== dashboard.js =====
@@ -3985,6 +4086,22 @@ async function saveProjectScope() {
   }
 }
 
+// Dedicated subtotal-only update — calls the backend's updateProjectContractSubtotal action
+async function updateProjectContractSubtotal(projectId, contractSubtotal) {
+  const payload = {
+    projectId,
+    contractSubtotal: roundMoney(Number(contractSubtotal) || 0),
+  };
+  const result = await callApi("updateProjectContractSubtotal", payload);
+  if (result && result.success !== false) {
+    const cache = getCache();
+    const proj = cache.projects.find((p) => p.projectId === projectId);
+    if (proj) proj.contractSubtotal = payload.contractSubtotal;
+    setCache(cache);
+  }
+  return result;
+}
+
 function triggerEditProjectProfile() {
   const cache = getCache();
   const id = getCurrentProjectId();
@@ -4014,11 +4131,12 @@ function switchConsoleSegment(seg) {
 async function loadTakeOffListings(forceRefresh = false) {
   const container = document.getElementById("console-takeoff-list");
   let cache = getCache();
-  if (forceRefresh || !cache.takeoffs.length) {
+  if (forceRefresh || !cache.takeoffsLoaded) {
     container.innerHTML = `<p style="text-align:center;padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading take‑off items...</p>`;
     const items = await callApi("getTakeOffItems", {});
     cache = getCache();
     cache.takeoffs = items || [];
+    cache.takeoffsLoaded = true;
     setCache(cache);
   }
   const projectId = getCurrentProjectId();
@@ -4054,11 +4172,12 @@ async function loadTakeOffListings(forceRefresh = false) {
 async function loadProgressTimelineFeed(forceRefresh = false) {
   const container = document.getElementById("console-progress-feed");
   let cache = getCache();
-  if (forceRefresh || !cache.progressLogs.length) {
+  if (forceRefresh || !cache.progressLogsLoaded) {
     container.innerHTML = `<p style="text-align:center;padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading progress logs...</p>`;
     const logs = await callApi("getProgressLogs", {});
     cache = getCache();
     cache.progressLogs = logs || [];
+    cache.progressLogsLoaded = true;
     setCache(cache);
   }
   const projectId = getCurrentProjectId();
@@ -4080,11 +4199,12 @@ async function loadProgressTimelineFeed(forceRefresh = false) {
 async function loadSnagsListings(forceRefresh = false) {
   const container = document.getElementById("console-snags-list");
   let cache = getCache();
-  if (forceRefresh || !cache.snags.length) {
+  if (forceRefresh || !cache.snagsLoaded) {
     container.innerHTML = `<p style="text-align:center;padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading snags...</p>`;
     const items = await callApi("getSnags", {});
     cache = getCache();
     cache.snags = items || [];
+    cache.snagsLoaded = true;
     setCache(cache);
   }
   const projectId = getCurrentProjectId();
@@ -4107,11 +4227,12 @@ async function loadSnagsListings(forceRefresh = false) {
 async function loadWorkOrdersListings(forceRefresh = false) {
   const container = document.getElementById("console-workorders-list");
   let cache = getCache();
-  if (forceRefresh || !cache.workorders.length) {
+  if (forceRefresh || !cache.workordersLoaded) {
     container.innerHTML = `<p style="text-align:center;padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading work orders...</p>`;
     const orders = await callApi("getWorkOrders", {});
     cache = getCache();
     cache.workorders = orders || [];
+    cache.workordersLoaded = true;
     setCache(cache);
   }
   const projectId = getCurrentProjectId();
@@ -4138,11 +4259,12 @@ async function loadWorkOrdersListings(forceRefresh = false) {
 async function loadPaymentsListings(forceRefresh = false) {
   const container = document.getElementById("console-payments-list");
   let cache = getCache();
-  if (forceRefresh || !cache.payments.length) {
+  if (forceRefresh || !cache.paymentsLoaded) {
     container.innerHTML = `<p style="text-align:center; font-size:14px; font-weight:700;"><i class="fas fa-spinner fa-spin"></i> Loading payment records...</p>`;
     const payments = await callApi("getPayments", {});
     cache = getCache();
     cache.payments = payments || [];
+    cache.paymentsLoaded = true;
     setCache(cache);
   }
   const projectId = getCurrentProjectId();
@@ -4213,6 +4335,14 @@ let cache = {
 let currentSelectedProjectId = null;
 
 function setCache(newCache) {
+  // Deep-merge settings so individual keys (VAT, WHT, Logo…) are never lost
+  // by a partial update. All other top-level keys are replaced as before.
+  if (newCache.settings && cache.settings) {
+    newCache = {
+      ...newCache,
+      settings: Object.assign({}, cache.settings, newCache.settings),
+    };
+  }
   cache = { ...cache, ...newCache };
 }
 function getCache() {
@@ -4227,9 +4357,12 @@ function getCurrentProjectId() {
 
 async function callApi(action, data = {}) {
   const isGet = action.startsWith("get");
+  // Strip the auth token from the data payload so it never reaches sheet rows.
+  // The token is sent at the top-level of the request envelope instead.
+  const { token: _stripped, ...cleanData } = data;
   let response;
   try {
-    const payload = { action, data: { ...data, token: AUTH_TOKEN } };
+    const payload = { action, token: AUTH_TOKEN, data: cleanData };
     response = await fetch(GAS_URL, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -4241,10 +4374,10 @@ async function callApi(action, data = {}) {
         action,
         action === "getStats" ? { activeVendors: "--" } : [],
       );
-    await queueOfflineRequest(action, data);
-    applyLocalMutation(action, data);
+    await queueOfflineRequest(action, cleanData);
+    applyLocalMutation(action, cleanData);
     updateSyncStatus();
-    alert("📴 Offline: saved locally. Will sync automatically when online.");
+    showSyncToast("📴 Offline: saved locally. Will sync when back online.");
     return { status: "queued" };
   }
   if (!response.ok) {
@@ -4280,8 +4413,10 @@ async function callApi(action, data = {}) {
     alert(`⚠️ Save failed: ${message}`);
     throw new Error(message);
   }
-  if (isGet) writeBackup(action, result);
-  return result;
+  const returnValue =
+    isGet && result && result.data !== undefined ? result.data : result;
+  if (isGet) writeBackup(action, returnValue);
+  return returnValue;
 }
 
 const DEPENDENCY_ORDER = {
@@ -4306,7 +4441,7 @@ async function syncQueuedRequests() {
   await updateSyncStatus();
   let queue = await getQueuedRequests();
   if (!queue.length) return;
-  alert("🔄 Syncing offline data...");
+  showSyncToast("🔄 Syncing offline data...", 10000);
   queue.sort(
     (a, b) =>
       (DEPENDENCY_ORDER[a.action] || 99) - (DEPENDENCY_ORDER[b.action] || 99),
@@ -4319,7 +4454,8 @@ async function syncQueuedRequests() {
       try {
         const payload = {
           action: item.action,
-          data: { ...item.data, token: AUTH_TOKEN },
+          token: AUTH_TOKEN,
+          data: item.data,
         };
         const response = await fetch(GAS_URL, {
           method: "POST",
@@ -4338,7 +4474,10 @@ async function syncQueuedRequests() {
         retries--;
         if (retries === 0) {
           console.error("Failed to sync", item.action, item.data);
-          alert(`Failed to sync ${item.action}. Will retry later.`);
+          showSyncToast(
+            `⚠️ Failed to sync ${item.action}. Will retry later.`,
+            4000,
+          );
         } else {
           await new Promise((r) => setTimeout(r, delay));
           delay *= 2;
@@ -4437,18 +4576,35 @@ async function refreshAllData() {
       `<i class="fas fa-spinner fa-spin"></i> Refreshing...`,
       true,
     );
-    await callApi("getProjects", {});
-    await callApi("getTakeOffItems", {});
-    await callApi("getProgressLogs", {});
-    await callApi("getSnags", {});
-    await callApi("getVendors", {});
-    await callApi("getWorkOrders", {});
-    await callApi("getPayments", {});
+    // Fetch all endpoints and update both localStorage backup AND in-memory cache
+    const endpoints = [
+      { action: "getProjects", key: "projects", isArray: true },
+      { action: "getTakeOffItems", key: "takeoffs", isArray: true },
+      { action: "getProgressLogs", key: "progressLogs", isArray: true },
+      { action: "getSnags", key: "snags", isArray: true },
+      { action: "getVendors", key: "vendors", isArray: true },
+      { action: "getWorkOrders", key: "workorders", isArray: true },
+      { action: "getPayments", key: "payments", isArray: true },
+    ];
+    for (const ep of endpoints) {
+      const res = await callApi(ep.action, {});
+      const c = getCache();
+      c[ep.key] = ep.isArray ? res || [] : res || {};
+      // Reset loaded flags so console segments re-render with fresh data
+      const loadedFlag = ep.key + "Loaded";
+      c[loadedFlag] = true;
+      setCache(c);
+    }
     const settingsRes = await callApi("getSettings", {});
-    if (settingsRes && settingsRes.data) {
-      const cache = getCache();
-      cache.settings = settingsRes.data;
-      setCache(cache);
+    if (settingsRes && typeof settingsRes === "object") {
+      const c = getCache();
+      // Deep-merge settings so individual keys are preserved
+      c.settings = Object.assign(
+        {},
+        c.settings,
+        settingsRes.data || settingsRes,
+      );
+      setCache(c);
     }
     await refreshMasterDashboard();
     if (currentSelectedProjectId) {
@@ -4484,6 +4640,7 @@ function showPage(pageId) {
     if (pageId === "vendors") refreshVendorsListView();
     if (pageId === "accounts") loadAccountsView();
     if (pageId === "reports") initReportsConsoleEngine();
+    if (pageId === "letterhead") loadLetterheadView();
   }
   window.scrollTo(0, 0);
 }
@@ -4494,12 +4651,265 @@ function showPageWithoutRefresh(pageId) {
   suppressPageRefresh = false;
 }
 
+// ===== letterhead.js =====
+function loadLetterheadView() {
+  const dateInput = document.getElementById("letter-date");
+  if (dateInput && !dateInput.value) {
+    dateInput.value = new Date().toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+}
+
+function generateLetterheadHTML() {
+  const date = document.getElementById("letter-date").value || "";
+  const clientName = document.getElementById("letter-client-name").value || "";
+  const clientAddress =
+    document.getElementById("letter-client-address").value || "";
+  const salutation = document.getElementById("letter-salutation").value || "";
+  const title = document.getElementById("letter-title").value || "";
+  const body = document.getElementById("letter-body").value || "";
+  const signatory = document.getElementById("letter-signatory").value || "";
+  const signatoryTitle =
+    document.getElementById("letter-signatory-title").value || "";
+
+  const cache = getCache();
+  const settings = cache.settings || {};
+  // Logo comes from Settings sheet key "Logo"; signature image from "Sign_Signed"; signatory name from "Name_Signed"
+  const logoUrl = settings.Logo ? getDirectImageUrl(settings.Logo) : "";
+  const signImageUrl = settings.Sign_Signed
+    ? getDirectImageUrl(settings.Sign_Signed)
+    : "";
+  // Use settings signatory name as fallback if form field is empty
+  const signatoryName = signatory || settings.Name_Signed || "";
+
+  const bodyParagraphs = body
+    .split("\n")
+    .filter((p) => p.trim())
+    .map(
+      (p) =>
+        `<p style="margin: 0 0 12px 0; text-align: justify;">${escapeHtml(p)}</p>`,
+    )
+    .join("");
+
+  const clientAddressLines = clientAddress
+    .split("\n")
+    .map((line) => `<div>${escapeHtml(line)}</div>`)
+    .join("");
+
+  // Signature block: show signature image from settings if available, else a line
+  const signatureLineOrImg = signImageUrl
+    ? `<img src="${escapeAttr(signImageUrl)}" style="height:48px; max-width:180px; object-fit:contain; display:block; margin-bottom:2px;" onerror="this.style.display='none'">`
+    : `<div style="border-bottom: 1.5px solid #000; width: 200px; margin-bottom: 4px;"></div>`;
+
+  return `<div class="letterhead-page" style="
+      position: relative;
+      min-height: calc(297mm - 1mm);
+      background: white;
+      font-family: 'Calibri', 'Georgia', serif;
+      font-size: 12pt;
+      color: #000;
+      padding: 10mm 10mm 15mm 15mm;
+      box-sizing: border-box;
+    ">
+
+    <!-- ── HEADER: Logo top-right, date below logo ── -->
+    <div style="display: flex; justify-content: flex-end; align-items: flex-start; margin-bottom: 28px;">
+      <div style="text-align: right;">
+        ${
+          logoUrl
+            ? `<img src="${escapeAttr(logoUrl)}" style="height: 120px; max-width: 200px; object-fit: contain; display: block; margin-left: auto;" onerror="this.style.display='none'">`
+            : `<div style="height:90px;"></div>`
+        }
+        <div style="font-size: 11pt; margin-top: 10px; color: #000;">${escapeHtml(date)}</div>
+      </div>
+    </div>
+
+    <!-- ── CLIENT BLOCK: bold name, normal address ── -->
+    <div style="margin-bottom: 20px; font-size: 11pt; line-height: 1.5;">
+      <div style="font-weight: 700;">${escapeHtml(clientName)}</div>
+      ${clientAddressLines}
+    </div>
+
+    <!-- ── SALUTATION ── -->
+    <div style="margin-bottom: 16px; font-size: 11pt;">${escapeHtml(salutation)}</div>
+
+    <!-- ── TITLE (bold, left-aligned) ── -->
+    ${title ? `<div style="font-weight: 700; font-size: 11pt; margin-bottom: 14px; text-decoration: ">${escapeHtml(title)}</div>` : ""}
+
+    <!-- ── BODY ── -->
+    <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 32px;">
+      ${bodyParagraphs || `<p style="color:#adb5bd; font-style:italic;">No body text entered.</p>`}
+    </div>
+
+    <!-- ── SIGNATURE BLOCK ── -->
+    <div style="font-size: 11pt; margin-bottom: 8px;">Yours faithfully,</div>
+    <div style="margin-top: 20px; margin-bottom: 4px;">
+      ${signatureLineOrImg}
+    </div>
+    <div style="font-weight: 700; font-size: 11pt;">${escapeHtml(signatoryName)}</div>
+    ${signatoryTitle ? `<div style="font-size: 11pt; color: #333;">${escapeHtml(signatoryTitle)}</div>` : ""}
+
+    <!-- ── FOOTER: pinned to bottom, centred, icon + two phones + email ── -->
+    <div style="
+        position: absolute;
+        bottom: 5mm;
+        left: 20mm;
+        right: 20mm;
+        border-top: 1px solid #888;
+        padding-top: 6px;
+        text-align: center;
+        font-size: 9pt;
+        color: #444;
+        line-height: 1.6;
+      ">
+      <div>&#128205; Road 1 House 5B, Isheri-Brooks Estate, Isheri-Olofin, Ogun State</div>
+      <div>
+        &#128222; +234 809 260 8103 &nbsp;&nbsp;&nbsp;
+        &#128222; +234 708 260 8103 &nbsp;&nbsp;&nbsp;
+        &#9993; pi.projects20@gmail.com
+      </div>
+    </div>
+
+  </div>`;
+}
+
+function printLetterhead() {
+  const html = generateLetterheadHTML();
+  const preview = document.getElementById("letterhead-preview");
+  const printContainer = document.getElementById("letterhead-print-container");
+  const card = document.getElementById("letterhead-preview-card");
+  if (preview) preview.innerHTML = html;
+  if (printContainer) printContainer.innerHTML = html;
+  if (card) card.style.display = "block";
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+async function generateLetterheadPDF(orientation) {
+  orientation = (orientation || "portrait").toLowerCase();
+  const isLandscape = orientation === "landscape" || orientation === "l";
+  const jsPdfOrientation = isLandscape ? "landscape" : "portrait";
+  const container = document.getElementById("letterhead-print-container");
+  if (!container || !container.innerText.trim()) {
+    alert("Generate a letter first");
+    return null;
+  }
+  if (typeof html2canvas === "undefined" || typeof jspdf === "undefined") {
+    alert("PDF libraries not loaded.");
+    return null;
+  }
+
+  const originals = {
+    display: container.style.display,
+    position: container.style.position,
+    left: container.style.left,
+    top: container.style.top,
+    width: container.style.width,
+    zIndex: container.style.zIndex,
+    background: container.style.background,
+    padding: container.style.padding,
+  };
+
+  container.style.display = "block";
+  container.style.position = "fixed";
+  container.style.left = "0";
+  container.style.top = "0";
+  container.style.width = isLandscape ? "297mm" : "210mm";
+  container.style.zIndex = "-9999";
+  container.style.background = "white";
+  container.style.padding = "0"; // padding is baked into the letterhead-page HTML
+  container.getBoundingClientRect();
+
+  try {
+    const windowWidthPx = isLandscape ? 1123 : 794;
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      windowWidth: windowWidthPx,
+    });
+    const imgData = canvas.toDataURL("image/jpeg", 0.92);
+    const pdf = new jspdf.jsPDF(jsPdfOrientation, "mm", "a4");
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    const imgProps = pdf.getImageProperties(imgData);
+    const imgWidth = imgProps.width;
+    const imgHeight = imgProps.height;
+    const ratio = pdfWidth / imgWidth;
+    const scaledHeight = imgHeight * ratio;
+    let heightLeft = scaledHeight;
+    let position = 0;
+    pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, scaledHeight);
+    heightLeft -= pdfHeight;
+    while (heightLeft > 2) {
+      position = heightLeft - scaledHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, scaledHeight);
+      heightLeft -= pdfHeight;
+    }
+    return pdf;
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+    alert("Failed to generate PDF.");
+    return null;
+  } finally {
+    container.style.display = originals.display;
+    container.style.position = originals.position;
+    container.style.left = originals.left;
+    container.style.top = originals.top;
+    container.style.width = originals.width;
+    container.style.zIndex = originals.zIndex;
+    container.style.background = originals.background;
+    container.style.padding = originals.padding;
+  }
+}
+
+async function saveLetterheadPDF() {
+  const pdf = await generateLetterheadPDF("portrait");
+  if (pdf) pdf.save("Letterhead.pdf");
+}
+
+async function shareLetterheadPDF() {
+  const pdf = await generateLetterheadPDF("portrait");
+  if (!pdf) return;
+  const isMobile =
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent,
+    );
+  if (isMobile && navigator.canShare && navigator.share) {
+    try {
+      const blob = pdf.output("blob");
+      const file = new File([blob], "Letterhead.pdf", {
+        type: "application/pdf",
+      });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "Letterhead",
+          text: "Letterhead",
+        });
+        return;
+      }
+    } catch (err) {
+      if (err.name !== "AbortError") console.error("Native share failed:", err);
+    }
+  }
+  pdf.save("Letterhead.pdf");
+}
+
 window.showPage = showPage;
+window.loadLetterheadView = loadLetterheadView;
+window.printLetterhead = printLetterhead;
+window.saveLetterheadPDF = saveLetterheadPDF;
+window.shareLetterheadPDF = shareLetterheadPDF;
 window.loadProjectConsoleHub = loadProjectConsoleHub;
 window.triggerEditProjectProfile = triggerEditProjectProfile;
 window.switchConsoleSegment = switchConsoleSegment;
 window.toggleScopeEdit = toggleScopeEdit;
 window.saveProjectScope = saveProjectScope;
+window.updateProjectContractSubtotal = updateProjectContractSubtotal;
 window.openModal = openModal;
 window.openModalWithRecord = openModalWithRecord;
 window.closeModal = closeModal;
@@ -4624,12 +5034,29 @@ window.addEventListener("load", () => {
   showPageWithoutRefresh("dashboard");
   refreshMasterDashboard();
   initPwaInstall();
-  callApi("getSettings", {})
-    .then((res) => {
-      const cache = getCache();
-      cache.settings = res && res.data ? res.data : {};
-      setCache(cache);
-    })
-    .catch(() => {});
+
+  // Pre-load all data lists in the background so reports and dropdowns work immediately
+  (async function preloadAllData() {
+    const endpoints = [
+      { action: "getVendors", key: "vendors", isArray: true },
+      { action: "getPayments", key: "payments", isArray: true },
+      { action: "getWorkOrders", key: "workorders", isArray: true },
+      { action: "getSnags", key: "snags", isArray: true },
+      { action: "getProgressLogs", key: "progressLogs", isArray: true },
+      { action: "getTakeOffItems", key: "takeoffs", isArray: true },
+      { action: "getSettings", key: "settings", isArray: false },
+    ];
+    for (const ep of endpoints) {
+      try {
+        const res = await callApi(ep.action, {});
+        const cache = getCache();
+        cache[ep.key] = ep.isArray ? res || [] : res || {};
+        setCache(cache);
+      } catch (e) {
+        console.warn("Preload failed for " + ep.action + ":", e);
+      }
+    }
+  })();
+
   if (navigator.onLine) syncQueuedRequests();
 });
