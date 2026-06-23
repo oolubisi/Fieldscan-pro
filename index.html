@@ -21,6 +21,7 @@
     <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <link rel="stylesheet" href="style.css" />
     <base target="_blank" />
+    <base target="_blank" />
   </head>
   <body>
     <div class="main">
@@ -218,6 +219,7 @@
             <option value="scope">Project Scope</option>
             <option value="snags">Snags Report</option>
             <option value="progress">Progress Report</option>
+            <option value="pcr">Project Completion Report (PCR)</option>
             <option value="takeoff">Take-Off Report</option>
             <option value="workorder_report">Work Orders</option>
           </select>
@@ -238,6 +240,23 @@
             <label>Select Work Order</label>
             <select id="rep-workorder-sel"></select>
           </div>
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              margin-top: 12px;
+              font-weight: 800;
+            "
+          >
+            <input
+              type="checkbox"
+              id="rep-include-signature"
+              checked
+              style="width: auto"
+            />
+            Include signature block
+          </label>
 
           <div
             id="rep-orientation-wrap"
@@ -333,6 +352,23 @@
             id="letter-signatory-title"
             placeholder="e.g. Managing Director"
           />
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              margin-top: 12px;
+              font-weight: 800;
+            "
+          >
+            <input
+              type="checkbox"
+              id="letter-include-signature"
+              checked
+              style="width: auto"
+            />
+            Include signature block
+          </label>
           <button
             class="action-btn"
             style="margin-top: 15px"
@@ -449,6 +485,20 @@
             onclick="switchConsoleSegment('payments')"
           >
             Payments
+          </button>
+          <button
+            class="segment-btn"
+            id="seg-btn-variations"
+            onclick="switchConsoleSegment('variations')"
+          >
+            Variations
+          </button>
+          <button
+            class="segment-btn"
+            id="seg-btn-pcr"
+            onclick="switchConsoleSegment('pcr')"
+          >
+            PCR
           </button>
         </div>
         <div id="console-seg-profile" class="console-tab-window page-view">
@@ -634,6 +684,104 @@
             + Log Payment
           </button>
         </div>
+        <div id="console-seg-variations" class="console-tab-window page-view">
+          <div id="console-variations-list"></div>
+          <button
+            class="action-btn"
+            style="margin-top: 10px"
+            onclick="openVariationModal(null)"
+          >
+            + New Variation
+          </button>
+        </div>
+        <div id="console-seg-pcr" class="console-tab-window page-view">
+          <div class="card">
+            <h3 style="margin-bottom: 12px; font-size: 18px; font-weight: 800">
+              Project Completion Report
+            </h3>
+            <label style="display: block; font-weight: 800; margin-top: 10px"
+              >Completion %</label
+            >
+            <input
+              id="pcr-completion"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              style="width: 100%; padding: 12px; font-size: 16px"
+            />
+            <label style="display: block; font-weight: 800; margin-top: 10px"
+              >Project Status</label
+            >
+            <select
+              id="pcr-status"
+              style="width: 100%; padding: 12px; font-size: 16px"
+            >
+              <option value="Complete">Complete</option>
+              <option value="Substantially Complete">
+                Substantially Complete
+              </option>
+              <option value="Practical Completion">Practical Completion</option>
+              <option value="Pending Snag Resolution">
+                Pending Snag Resolution
+              </option>
+              <option value="Handed Over">Handed Over</option>
+            </select>
+            <label
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 12px;
+                font-weight: 800;
+              "
+            >
+              <input type="checkbox" id="pcr-show-wht" style="width: auto" />
+              Show WHT in financial snapshot
+            </label>
+            <label style="display: block; font-weight: 800; margin-top: 10px"
+              >Completion Summary</label
+            >
+            <textarea
+              id="pcr-summary"
+              rows="4"
+              style="width: 100%; padding: 12px; font-size: 16px"
+            ></textarea>
+            <label style="display: block; font-weight: 800; margin-top: 10px"
+              >Completion Declaration</label
+            >
+            <textarea
+              id="pcr-declaration"
+              rows="3"
+              style="width: 100%; padding: 12px; font-size: 16px"
+            ></textarea>
+            <button
+              class="action-btn"
+              style="margin-top: 12px"
+              onclick="saveProjectPcrFields()"
+            >
+              Save PCR Fields
+            </button>
+            <div
+              style="
+                margin-top: 16px;
+                border-top: 1px solid var(--border);
+                padding-top: 12px;
+              "
+            >
+              <strong
+                style="
+                  font-size: 14px;
+                  text-transform: uppercase;
+                  display: block;
+                  margin-bottom: 8px;
+                "
+                >Approved Variations</strong
+              >
+              <div id="pcr-variations-list"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Modal Overlay -->
@@ -655,6 +803,7 @@
       </div>
     </div>
 
+    <script src="branding.js"></script>
     <script src="app.bundle.js"></script>
   </body>
 </html>

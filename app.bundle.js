@@ -3,7 +3,7 @@
 
 // ===== config.js =====
 const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbwQ5HeJP9_msrGeaHRpqn9cgXYwwV48oLS2uBb-F8S90rwprmtoSONpM1UxSECWw41v/exec";
+  "https://script.google.com/macros/s/AKfycbwipyM8n8F2K997gy_mqyEneKGt_d2RzyvB4DjYSdf66V9qpql2h7PHjm_5NmSKZwPj/exec";
 const AUTH_TOKEN = "FieldScan2025!SecureToken";
 const ATTACHMENT_DELIMITER = "|||";
 
@@ -287,9 +287,16 @@ function deleteSelectedTemplates() {
   if (!confirm(`Delete ${selectedTemplateIds.size} selected custom templates?`))
     return;
   const custom = getCustomTemplates();
+  const toDelete = Array.from(selectedTemplateIds);
   const remaining = custom.filter((t) => !selectedTemplateIds.has(t.id));
-  saveCustomTemplates(remaining);
+  saveCustomTemplates(remaining, false); // localStorage
   selectedTemplateIds.clear();
+  // Delete each from sheet (fire-and-forget)
+  toDelete.forEach((id) =>
+    callApi("deleteTakeOffTemplate", { templateId: id }).catch((e) =>
+      console.warn("deleteTakeOffTemplate failed for", id, e),
+    ),
+  );
   loadTemplatesSegment();
 }
 
@@ -917,8 +924,73 @@ function getCustomTemplates() {
     return [];
   }
 }
-function saveCustomTemplates(templates) {
+
+// Persist to localStorage AND sync each template to the backend sheet.
+// Pass syncToSheet=false for bulk-replace operations that call syncTemplatesToSheet() themselves.
+function saveCustomTemplates(templates, syncToSheet = true) {
   localStorage.setItem("fb_customTemplates", JSON.stringify(templates));
+  if (syncToSheet) {
+    // Fire-and-forget — don't block the UI
+    syncTemplatesToSheet(templates).catch((e) =>
+      console.warn("Template sheet sync failed:", e),
+    );
+  }
+}
+
+// Push every custom template to the backend sheet (upsert).
+// Called after any create/edit/import operation.
+async function syncTemplatesToSheet(templates) {
+  if (!navigator.onLine) return; // will naturally re-sync next time user is online
+  for (const t of templates) {
+    try {
+      await callApi("saveTakeOffTemplate", {
+        templateId: t.id,
+        name: t.name,
+        description: t.description || "",
+        items: t.items || [],
+      });
+    } catch (e) {
+      console.warn("syncTemplatesToSheet: failed for", t.id, e);
+    }
+  }
+}
+
+// Load templates from the backend sheet and merge into localStorage.
+// Sheet is the source of truth; localStorage is the cache.
+// Returns the merged array so callers can re-render immediately.
+async function loadTemplatesFromSheet() {
+  try {
+    const res = await callApi("getTakeOffTemplates", {});
+    // Backend returns an array directly (or wrapped in { data: [...] })
+    const sheetTemplates = Array.isArray(res)
+      ? res
+      : Array.isArray(res?.data)
+        ? res.data
+        : [];
+
+    if (!sheetTemplates.length) return getCustomTemplates();
+
+    const local = getCustomTemplates();
+    const localMap = new Map(local.map((t) => [t.id, t]));
+
+    // Merge: sheet wins on conflicts (sheet is source of truth)
+    sheetTemplates.forEach((s) => {
+      localMap.set(s.templateId || s.id, {
+        id: s.templateId || s.id,
+        name: s.name || "",
+        description: s.description || "",
+        items: Array.isArray(s.items) ? s.items : [],
+      });
+    });
+
+    const merged = Array.from(localMap.values());
+    // Write merged result back to localStorage without re-syncing to sheet
+    saveCustomTemplates(merged, false);
+    return merged;
+  } catch (e) {
+    console.warn("loadTemplatesFromSheet failed:", e);
+    return getCustomTemplates();
+  }
 }
 function getHiddenBuiltInIds() {
   try {
@@ -961,8 +1033,12 @@ function findTemplateById(id) {
 }
 function deleteCustomTemplate(id) {
   const filtered = getCustomTemplates().filter((t) => t.id !== id);
-  saveCustomTemplates(filtered);
+  saveCustomTemplates(filtered, false); // localStorage only — sheet deletion is separate
   selectedTemplateIds.delete(id);
+  // Delete from sheet (fire-and-forget)
+  callApi("deleteTakeOffTemplate", { templateId: id }).catch((e) =>
+    console.warn("deleteTakeOffTemplate sheet sync failed:", e),
+  );
 }
 function generateTemplateId() {
   return "TMPL-CUST-" + Date.now();
@@ -1062,7 +1138,12 @@ function importTemplatesFromJSON(file) {
             added++;
           }
         });
-        saveCustomTemplates(existing);
+        saveCustomTemplates(existing, false); // localStorage
+        // Sync only the newly added templates to the sheet
+        const newOnes = existing.filter((t) => !existingIds.has(t.id));
+        syncTemplatesToSheet(newOnes).catch((e) =>
+          console.warn("Import sheet sync failed:", e),
+        );
         resolve({ added, skipped, total: incoming.length });
       } catch (e) {
         reject(
@@ -1144,6 +1225,7 @@ function loadTemplatesSegment() {
 
   html += `<div style="margin-top:8px; font-size:13px; font-weight:800; text-transform:uppercase; color:var(--muted);">Custom Templates</div>`;
   html += `<div style="display:flex; gap:6px; flex-wrap:wrap; margin:8px 0;">
+    <button class="action-btn" style="width:auto; padding:6px 12px; font-size:12px; background:var(--card-light); color:var(--text);" onclick="window.refreshTemplatesFromSheet()"><i class="fas fa-sync-alt"></i> Refresh Templates</button>
     <button class="action-btn" style="width:auto; padding:6px 12px; font-size:12px; background:var(--card-light); color:var(--text);" onclick="window.exportAllTemplatesJSON()"><i class="fas fa-download"></i> Export All</button>
     <button class="action-btn" style="width:auto; padding:6px 12px; font-size:12px; background:var(--primary);" onclick="window.openImportTemplatesModal()"><i class="fas fa-upload"></i> Import</button>
   </div>`;
@@ -1186,7 +1268,7 @@ function openSaveAsTemplateModal() {
   body.innerHTML = `<label style="display:block; font-weight:800; margin-top:12px; margin-bottom:4px;">Template Name</label><input id="tmpl_name" style="width:100%; padding:12px; font-size:16px;" placeholder="e.g. My Standard Flat"><label style="display:block; font-weight:800; margin-top:12px; margin-bottom:4px;">Description</label><textarea id="tmpl_desc" rows="2" style="width:100%; padding:12px; font-size:16px;" placeholder="Brief description..."></textarea>`;
   submit.style.display = "block";
   submit.innerText = "Save Template";
-  submit.onclick = () => {
+  submit.onclick = async () => {
     const name = document.getElementById("tmpl_name").value.trim();
     const desc = document.getElementById("tmpl_desc").value.trim();
     if (!name) {
@@ -1209,17 +1291,34 @@ function openSaveAsTemplateModal() {
       unit: i.unit,
       quantity: 0,
     }));
-    const custom = getCustomTemplates();
-    custom.push({
+    const newTemplate = {
       id: generateTemplateId(),
       name,
       description: desc || "Custom template",
       items: stripped,
-    });
-    saveCustomTemplates(custom);
+    };
+    const custom = getCustomTemplates();
+    custom.push(newTemplate);
+    // Save to localStorage immediately
+    saveCustomTemplates(custom, false);
     closeModal();
     loadTemplatesSegment();
-    alert("Template saved");
+    // Sync to sheet in background, show toast on result
+    try {
+      submit.disabled = true;
+      await callApi("saveTakeOffTemplate", {
+        templateId: newTemplate.id,
+        name: newTemplate.name,
+        description: newTemplate.description,
+        items: newTemplate.items,
+      });
+      showSyncToast("✅ Template saved to sheet");
+    } catch (e) {
+      console.warn("saveTakeOffTemplate sheet sync failed:", e);
+      showSyncToast(
+        "⚠️ Saved locally. Sheet sync failed — will retry on next refresh.",
+      );
+    }
   };
 }
 
@@ -1251,7 +1350,7 @@ function openEditTemplateModal(id) {
   body.innerHTML = `<datalist id="edit-room-types">${roomOptions}</datalist><datalist id="edit-trade-cats">${tradeOptions}</datalist><label style="display:block; font-weight:800; margin-top:12px; margin-bottom:4px;">Template Name</label><input id="edit_tmpl_name" value="${escapeAttr(t.name)}" style="width:100%; padding:12px; font-size:16px; border:1.5px solid var(--border); border-radius:12px;"><label style="display:block; font-weight:800; margin-top:12px; margin-bottom:4px;">Description</label><textarea id="edit_tmpl_desc" rows="2" style="width:100%; padding:12px; font-size:16px; border:1.5px solid var(--border); border-radius:12px;">${escapeHtml(t.description)}</textarea><div style="margin-top:16px; margin-bottom:8px; font-weight:800; font-size:13px; text-transform:uppercase;">Items</div><div id="edit_tmpl_items">${itemsHtml}</div><button class="action-btn" style="margin-top:10px; background:var(--card-light); color:var(--text);" onclick="addEditTemplateItemRow()"><i class="fas fa-plus"></i> Add Item</button>`;
   submit.style.display = "block";
   submit.innerText = "Save Changes";
-  submit.onclick = () => {
+  submit.onclick = async () => {
     const name = document.getElementById("edit_tmpl_name").value.trim();
     const desc = document.getElementById("edit_tmpl_desc").value.trim();
     if (!name) {
@@ -1282,10 +1381,22 @@ function openEditTemplateModal(id) {
       custom[idx].name = name;
       custom[idx].description = desc || "Custom template";
       custom[idx].items = newItems;
-      saveCustomTemplates(custom);
+      saveCustomTemplates(custom, false); // localStorage immediately
       closeModal();
       loadTemplatesSegment();
-      alert("Template updated");
+      // Sync to sheet in background
+      try {
+        await callApi("saveTakeOffTemplate", {
+          templateId: custom[idx].id,
+          name: custom[idx].name,
+          description: custom[idx].description,
+          items: custom[idx].items,
+        });
+        showSyncToast("✅ Template updated on sheet");
+      } catch (e) {
+        console.warn("saveTakeOffTemplate edit sync failed:", e);
+        showSyncToast("⚠️ Saved locally. Sheet sync failed.");
+      }
     }
   };
 }
@@ -1325,82 +1436,211 @@ function previewTemplate(id) {
 async function applyTemplateToProject(templateId) {
   const t = findTemplateById(templateId);
   if (!t) return;
-  if (
-    !confirm(`Apply "${t.name}" (${t.items.length} items) to this project?
-
-Quantities will be set to 0 for field measurement.`)
-  )
-    return;
   const projectId = getCurrentProjectId();
   if (!projectId) {
     alert("No project selected");
     return;
   }
-  const btn = document.querySelector(
-    `button[onclick="applyTemplateToProject('${escapeAttr(templateId)}')"]`,
-  );
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-  }
-  try {
-    for (const item of t.items) {
+
+  const body = document.getElementById("modalBody");
+  const submit = document.getElementById("modalSubmit");
+  const titleEl = document.getElementById("modalTitle");
+  const overlay = document.getElementById("modalOverlay");
+
+  titleEl.innerText = "Apply Template";
+  overlay.style.display = "flex";
+  body.innerHTML = "";
+  submit.disabled = false;
+  submit.innerText = "Add Selected Items";
+  submit.style.display = "block";
+  currentModalFiles = [];
+
+  const unitOptions = MASTER_UNITS.map(
+    (u) =>
+      `<option value="${escapeAttr(u.value)}">${escapeHtml(u.label)}</option>`,
+  ).join("");
+
+  const itemRowsHtml = t.items
+    .map(
+      (item, idx) => `
+    <tr class="to-tmpl-row" data-idx="${idx}">
+      <td style="padding:6px 4px; border-bottom:1px solid var(--border); width:32px; vertical-align:middle; text-align:center;">
+        <input type="checkbox" class="to-tmpl-chk" checked
+          style="width:auto; cursor:pointer;"
+          onchange="window.updateTmplGroupCheckbox()">
+      </td>
+      <td style="padding:4px; border-bottom:1px solid var(--border);">
+        <input class="to-line-desc" value="${escapeAttr(item.description)}"
+          placeholder="Description"
+          style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px;">
+      </td>
+      <td style="padding:4px; border-bottom:1px solid var(--border); width:64px;">
+        <input class="to-line-qty" type="number" value="0" min="0" step="0.01"
+          style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px; text-align:right;">
+      </td>
+      <td style="padding:4px; border-bottom:1px solid var(--border); width:96px;">
+        <select class="to-line-unit"
+          style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px;">
+          <option value="" disabled>Unit</option>
+          ${unitOptions}
+        </select>
+      </td>
+      <td style="padding:4px; border-bottom:1px solid var(--border);">
+        <input class="to-line-notes" value="${escapeAttr(item.tradeCategory || "")}"
+          placeholder="Notes / trade"
+          style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px;">
+      </td>
+    </tr>`,
+    )
+    .join("");
+
+  body.innerHTML = `
+    <div style="background:var(--card-light); border:1.5px solid var(--border); border-radius:12px; padding:10px 14px; margin-bottom:10px; display:flex; align-items:center; gap:10px;">
+      <input type="checkbox" id="tmpl-group-chk" checked style="width:auto; cursor:pointer;"
+        onchange="window.toggleAllTmplRows(this.checked)">
+      <div style="flex:1; min-width:0;">
+        <strong style="font-size:15px;">${escapeHtml(t.name)}</strong>
+        <span id="tmpl-sel-count" style="font-size:12px; color:var(--muted); margin-left:8px;">${t.items.length} of ${t.items.length} selected</span>
+      </div>
+      <span style="font-size:10px; font-weight:900; background:var(--primary); color:#fff; padding:3px 8px; border-radius:4px; text-transform:uppercase; flex-shrink:0;">Template</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; font-size:13px; border-collapse:collapse; margin-bottom:10px;">
+        <thead>
+          <tr style="background:#000; color:#fff;">
+            <th style="width:32px; padding:6px;"></th>
+            <th style="padding:6px; text-align:left; font-size:10px; text-transform:uppercase;">Description</th>
+            <th style="padding:6px; text-align:right; font-size:10px; text-transform:uppercase; width:64px;">Qty</th>
+            <th style="padding:6px; text-align:left; font-size:10px; text-transform:uppercase; width:96px;">U/M</th>
+            <th style="padding:6px; text-align:left; font-size:10px; text-transform:uppercase;">Notes / Trade</th>
+          </tr>
+        </thead>
+        <tbody id="to_tmpl_body">${itemRowsHtml}</tbody>
+      </table>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; margin-top:4px; flex-wrap:wrap;">
+      <span style="font-size:12px; font-weight:700; color:var(--muted);">Set unit for selected:</span>
+      <select id="tmpl-bulk-unit" style="padding:6px 10px; font-size:13px; border:1.5px solid var(--border); border-radius:8px;">
+        <option value="">— choose —</option>${unitOptions}
+      </select>
+      <button class="action-btn" style="width:auto; padding:6px 12px; font-size:12px; background:var(--card-light); color:var(--text);"
+        onclick="window.applyBulkUnitToTmpl()">Apply to selected</button>
+    </div>`;
+
+  // Pre-select unit on each row from template data
+  body.querySelectorAll(".to-tmpl-row").forEach((row, idx) => {
+    const unit = t.items[idx]?.unit || "";
+    const sel = row.querySelector(".to-line-unit");
+    if (sel && unit) sel.value = unit;
+  });
+
+  submit.onclick = async () => {
+    const tableRows = document.querySelectorAll("#to_tmpl_body tr.to-tmpl-row");
+    const selected = Array.from(tableRows).filter(
+      (row) => row.querySelector(".to-tmpl-chk")?.checked,
+    );
+    if (!selected.length) {
+      alert("Select at least one item");
+      return;
+    }
+    for (const row of selected) {
+      if (!row.querySelector(".to-line-unit").value) {
+        alert("Select a unit for all ticked items");
+        return;
+      }
+    }
+    submit.disabled = true;
+    submit.innerHTML = `<i class="fas fa-spinner fa-spin"></i> GPS…`;
+    const gps = await getGPSLocation();
+    submit.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving ${selected.length} items…`;
+    let saved = 0,
+      failed = 0;
+    for (const row of selected) {
+      const desc = row.querySelector(".to-line-desc").value.trim();
+      if (!desc) continue;
       const payload = {
         itemId:
           "TO-" + Date.now() + "-" + Math.random().toString(36).substr(2, 5),
-        projectId: projectId,
-        roomArea: item.roomArea,
-        tradeCategory: item.tradeCategory,
-        description: item.description,
-        quantity: 0,
-        unit: item.unit,
+        projectId,
+        roomArea: "",
+        tradeCategory: row.querySelector(".to-line-notes").value.trim(),
+        description: desc,
+        quantity: Number(row.querySelector(".to-line-qty").value) || 0,
+        unit: row.querySelector(".to-line-unit").value,
         beforePhotoUrl: "",
-        scopeNotes: "From template: " + t.name,
+        scopeNotes:
+          "From template: " +
+          t.name +
+          (gps !== "GPS Unavailable" ? "\n📍 " + gps : ""),
       };
-      await callApi("saveTakeOffItem", payload);
+      try {
+        await callApi("saveTakeOffItem", payload);
+        saved++;
+      } catch (e) {
+        failed++;
+      }
     }
-    loadTakeOffListings(true);
-    alert(`Template applied: ${t.items.length} items added.`);
-  } catch (e) {
-    alert("Error applying template: " + (e.message || "Unknown error"));
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = `<i class="fas fa-check"></i> Apply`;
-    }
+    closeModal();
+    await loadTakeOffListings(true);
+    showSyncToast(
+      failed
+        ? `⚠️ ${saved} saved, ${failed} failed`
+        : `✅ ${saved} item${saved !== 1 ? "s" : ""} added from "${t.name}"`,
+    );
+  };
+}
+
+function toggleAllTmplRows(checked) {
+  document.querySelectorAll("#to_tmpl_body .to-tmpl-chk").forEach((chk) => {
+    chk.checked = checked;
+  });
+  updateTmplGroupCheckbox();
+}
+
+function updateTmplGroupCheckbox() {
+  const all = document.querySelectorAll("#to_tmpl_body .to-tmpl-chk");
+  const ticked = Array.from(all).filter((c) => c.checked);
+  const grpChk = document.getElementById("tmpl-group-chk");
+  const countEl = document.getElementById("tmpl-sel-count");
+  if (grpChk) {
+    grpChk.checked = ticked.length === all.length;
+    grpChk.indeterminate = ticked.length > 0 && ticked.length < all.length;
   }
+  if (countEl)
+    countEl.textContent = `${ticked.length} of ${all.length} selected`;
+}
+
+function applyBulkUnitToTmpl() {
+  const unit = document.getElementById("tmpl-bulk-unit")?.value;
+  if (!unit) return;
+  document.querySelectorAll("#to_tmpl_body tr.to-tmpl-row").forEach((row) => {
+    if (row.querySelector(".to-tmpl-chk")?.checked)
+      row.querySelector(".to-line-unit").value = unit;
+  });
+}
+
+// Select or deselect all items in a named template group in the take-off list
+function toggleGroupSelection(groupLabel, checked) {
+  const cache = getCache();
+  const projectId = getCurrentProjectId();
+  const TMPL_PREFIX = "From template: ";
+  (cache.takeoffs || [])
+    .filter((i) => {
+      if (i.projectId !== projectId) return false;
+      const note = String(i.scopeNotes || "");
+      const itemGroup = note.startsWith(TMPL_PREFIX)
+        ? note.slice(TMPL_PREFIX.length).split("\n")[0].trim()
+        : null;
+      return itemGroup === groupLabel;
+    })
+    .forEach((i) => {
+      if (checked) selectedTakeOffIds.add(i.itemId);
+      else selectedTakeOffIds.delete(i.itemId);
+    });
+  loadTakeOffListings();
 }
 
 // ===== db.js =====
-// Seed in-memory cache from localStorage backups so the app has data
-// immediately on page load without waiting for the network.
-(function seedCacheFromBackup() {
-  const seeds = [
-    { key: "projects", action: "getProjects", isArray: true },
-    { key: "takeoffs", action: "getTakeOffItems", isArray: true },
-    { key: "progressLogs", action: "getProgressLogs", isArray: true },
-    { key: "snags", action: "getSnags", isArray: true },
-    { key: "vendors", action: "getVendors", isArray: true },
-    { key: "workorders", action: "getWorkOrders", isArray: true },
-    { key: "payments", action: "getPayments", isArray: true },
-    { key: "settings", action: "getSettings", isArray: false },
-  ];
-  seeds.forEach(({ key, action, isArray }) => {
-    try {
-      const raw = localStorage.getItem(`fb_${action}`);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (
-          isArray ? Array.isArray(parsed) : parsed && typeof parsed === "object"
-        ) {
-          cache[key] = parsed;
-        }
-      }
-    } catch (e) {
-      console.warn("seedCacheFromBackup failed for", key, e);
-    }
-  });
-})();
 const DB_NAME = "FieldScanOfflineDB";
 const STORE_NAME = "syncQueue";
 const SNAG_PHOTO_STORE = "snagPhotos";
@@ -3370,7 +3610,7 @@ ${projects.map((p) => `<option value="${escapeAttr(p.clientName)}" data-project-
       : isSmallExpense
         ? ""
         : "";
-    body.innerHTML = `<label ${labelStyle}>ID</label><input value="${isEdit ? editData.paymentId : "Auto-generated"}" disabled style="${largeInput} background:#f0f0f0;"><input type="hidden" id="pay_id_hidden" value="${escapeAttr(isEdit ? editData.paymentId : "")}"><input type="hidden" id="pay_group_id" value="${escapeAttr(isEdit && editData.paymentGroupId ? editData.paymentGroupId : "")}"><label ${labelStyle}>Direction</label><select id="pay_dir" ${largeInput} onchange="window.onPaymentDirectionChange()">
+    body.innerHTML = `<label ${labelStyle}>ID</label><input value="${isEdit ? editData.paymentId || "Auto-generated" : "Auto-generated"}" disabled style="${largeInput} background:#f0f0f0;"><input type="hidden" id="pay_id_hidden" value="${escapeAttr(isEdit ? editData.paymentId : "")}"><input type="hidden" id="pay_group_id" value="${escapeAttr(isEdit && editData.paymentGroupId ? editData.paymentGroupId : "")}"><label ${labelStyle}>Direction</label><select id="pay_dir" ${largeInput} onchange="window.onPaymentDirectionChange()">
 <option value="Client Receipt" ${currentDir === "Client Receipt" ? "selected" : ""}>Client Receipt</option>
 <option value="Outgoing Payment" ${currentDir === "Outgoing Payment" ? "selected" : ""}>Outgoing Payment</option>
 <option value="Small Expense" ${currentDir === "Small Expense" ? "selected" : ""}>Small Expense</option>
@@ -3436,8 +3676,12 @@ ${projects.map((p) => `<option value="${escapeAttr(p.clientName)}" data-project-
       let paymentGroupId = document.getElementById("pay_group_id").value;
       if (!isEdit && !isSmall && !paymentGroupId)
         paymentGroupId = "PAY-GRP-" + Date.now();
+
+      // ✅ FIX: distinguish "Add Stage" (new record) from true edit
+      const isRealEdit = isEdit && editData.paymentId;
+
       const payload = {
-        paymentId: isEdit ? editData.paymentId : "PAY-" + Date.now(),
+        paymentId: isRealEdit ? editData.paymentId : "PAY-" + Date.now(),
         projectId: getCurrentProjectId(),
         paymentDate: todayFormatted(),
         paymentDirection: direction,
@@ -3450,11 +3694,11 @@ ${projects.map((p) => `<option value="${escapeAttr(p.clientName)}" data-project-
         status: "",
         stage: stage,
         paymentGroupId:
-          paymentGroupId || (isEdit ? editData.paymentGroupId : ""),
+          paymentGroupId || (isRealEdit ? editData.paymentGroupId : ""),
         notes: document.getElementById("pay_notes").value,
         attachments: normalizeAttachments(currentModalFiles),
       };
-      callApi(isEdit ? "updatePayment" : "savePayment", payload)
+      callApi(isRealEdit ? "updatePayment" : "savePayment", payload)
         .then(() => {
           closeModal();
           loadPaymentsListings(true);
@@ -3481,8 +3725,9 @@ function onPaymentDirectionChange() {
     const amountInput = document.getElementById("pay_amount");
     if (totalInput && amountInput) {
       totalInput.value = amountInput.value || "";
-      totalInput.disabled = true;
-      totalInput.style.background = "#f0f0f0";
+      // ✅ Keep editable for Small Expense
+      totalInput.disabled = false;
+      totalInput.style.background = "white";
     }
   } else {
     const totalInput = document.getElementById("pay_total_invoice");
@@ -3547,6 +3792,14 @@ function validateStageAmount() {
   const balanceEl = document.getElementById("pay_balance");
   if (!amountInput || !balanceEl) return;
   const amount = roundMoney(Number(amountInput.value) || 0);
+
+  // ✅ Small Expense is a single full payment — don't cap it at the balance display
+  const dir = document.getElementById("pay_dir")?.value;
+  if (dir === "Small Expense") {
+    if (hint) hint.style.display = "none";
+    return;
+  }
+
   const balanceText = balanceEl.innerText.replace(/[₦,]/g, "");
   const balance = roundMoney(Number(balanceText) || 0);
   if (amount > balance && balance >= 0) {
@@ -4121,7 +4374,13 @@ function switchConsoleSegment(seg) {
   document.getElementById(`console-seg-${seg}`).classList.add("active-view");
   document.getElementById(`seg-btn-${seg}`).classList.add("active");
   if (seg === "takeoff") loadTakeOffListings();
-  if (seg === "templates") loadTemplatesSegment();
+  if (seg === "templates") {
+    // Render from localStorage immediately, then merge from sheet in background
+    loadTemplatesSegment();
+    loadTemplatesFromSheet()
+      .then(() => loadTemplatesSegment())
+      .catch(() => {});
+  }
   if (seg === "progress") loadProgressTimelineFeed();
   if (seg === "snags") loadSnagsListings();
   if (seg === "workorders") loadWorkOrdersListings();
@@ -4150,22 +4409,156 @@ async function loadTakeOffListings(forceRefresh = false) {
     selectedTakeOffIds.clear();
     return;
   }
+
+  // ── Group items by their template source ──────────────────────────────────
+  // scopeNotes starting with "From template: X" → group under that template name
+  // Everything else → "Ungrouped" bucket
+  const TMPL_PREFIX = "From template: ";
+  const groups = new Map(); // key = display label, value = { label, items[], isTemplate }
+
+  projectItems.forEach((i) => {
+    const isHeader = String(i.scopeNotes || "").startsWith("__HEADER__:");
+    let groupKey;
+    if (String(i.scopeNotes || "").startsWith(TMPL_PREFIX)) {
+      groupKey = i.scopeNotes.slice(TMPL_PREFIX.length).split("\n")[0].trim();
+    } else {
+      groupKey = "__ungrouped__";
+    }
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        label: groupKey === "__ungrouped__" ? null : groupKey,
+        items: [],
+        isTemplate: groupKey !== "__ungrouped__",
+      });
+    }
+    groups.get(groupKey).items.push(i);
+  });
+
+  // ── Build HTML ─────────────────────────────────────────────────────────────
   let html = "";
-  if (selectedTakeOffIds.size > 0)
-    html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"><span style="font-size:13px; font-weight:700;">${selectedTakeOffIds.size} selected</span><button class="action-btn" style="width:auto; padding:8px 16px; font-size:13px; background:var(--danger);" onclick="window.deleteSelectedTakeOffs()"><i class="fas fa-trash"></i> Delete Selected</button></div>`;
-  html += projectItems
-    .map((i) => {
-      const key = `takeoff_item:${i.itemId}`;
-      window.modalRecordCache = window.modalRecordCache || {};
-      window.modalRecordCache[key] = i;
-      const isChecked = selectedTakeOffIds.has(i.itemId);
-      const isHeader = String(i.scopeNotes || "").startsWith("__HEADER__:");
-      if (isHeader) {
-        return `<div class="card" style="background:var(--card-light); border-left:4px solid var(--primary); cursor:default; padding:10px 16px; margin-bottom:8px;"><div style="display:flex; align-items:center; gap:10px;"><input type="checkbox" style="width:auto; cursor:pointer;" ${isChecked ? "checked" : ""} onclick="event.stopPropagation(); window.toggleTakeOffSelection('${escapeAttr(i.itemId)}', this.checked)"><strong style="font-size:15px; text-transform:uppercase; letter-spacing:0.5px;">${escapeHtml(i.description)}</strong></div></div>`;
-      }
-      return `<div class="card" style="cursor:pointer; position:relative;"><div style="display:flex; align-items:start; gap:10px;"><input type="checkbox" style="width:auto; margin-top:2px; cursor:pointer;" ${isChecked ? "checked" : ""} onclick="event.stopPropagation(); window.toggleTakeOffSelection('${escapeAttr(i.itemId)}', this.checked)"><div style="flex:1;" onclick="window.openModalWithRecord('takeoff_item', window.modalRecordCache['${key}'])">${escapeHtml(i.description)}<br><strong>${escapeHtml(i.quantity)} ${escapeHtml(i.unit)}</strong>${i.scopeNotes ? `<div style="font-size:11px; color:var(--muted); margin-top:4px;">${escapeHtml(i.scopeNotes)}</div>` : ""}</div></div></div>`;
-    })
-    .join("");
+
+  // Bulk-delete toolbar
+  if (selectedTakeOffIds.size > 0) {
+    html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <span style="font-size:13px; font-weight:700;">${selectedTakeOffIds.size} selected</span>
+      <button class="action-btn" style="width:auto; padding:8px 16px; font-size:13px; background:var(--danger);" onclick="window.deleteSelectedTakeOffs()">
+        <i class="fas fa-trash"></i> Delete Selected
+      </button>
+    </div>`;
+  }
+
+  groups.forEach((group) => {
+    if (group.isTemplate) {
+      // ── Template group card ─────────────────────────────────────────────
+      const groupItems = group.items;
+      const groupItemCount = groupItems.length;
+      const allChecked = groupItems.every((i) =>
+        selectedTakeOffIds.has(i.itemId),
+      );
+      const groupId = "grp-" + group.label.replace(/[^a-z0-9]/gi, "_");
+
+      const rowsHtml = groupItems
+        .map((i) => {
+          const key = `takeoff_item:${i.itemId}`;
+          window.modalRecordCache = window.modalRecordCache || {};
+          window.modalRecordCache[key] = i;
+          const isChecked = selectedTakeOffIds.has(i.itemId);
+          const isHeader = String(i.scopeNotes || "").startsWith("__HEADER__:");
+
+          if (isHeader) {
+            return `<tr style="background:var(--card-light);">
+            <td colspan="5" style="padding:8px 10px; font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:0.4px; border-bottom:1px solid var(--border);">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" style="width:auto; cursor:pointer;" ${isChecked ? "checked" : ""}
+                  onclick="event.stopPropagation(); window.toggleTakeOffSelection('${escapeAttr(i.itemId)}', this.checked)">
+                ${escapeHtml(i.description)}
+              </div>
+            </td>
+          </tr>`;
+          }
+
+          return `<tr style="border-bottom:1px solid var(--border); cursor:pointer;"
+          onclick="window.openModalWithRecord('takeoff_item', window.modalRecordCache['${key}'])">
+          <td style="padding:8px 6px; width:28px;" onclick="event.stopPropagation()">
+            <input type="checkbox" style="width:auto; cursor:pointer;" ${isChecked ? "checked" : ""}
+              onclick="event.stopPropagation(); window.toggleTakeOffSelection('${escapeAttr(i.itemId)}', this.checked)">
+          </td>
+          <td style="padding:8px 6px; font-size:13px;">${escapeHtml(i.description)}</td>
+          <td style="padding:8px 6px; font-size:12px; color:var(--muted);">${escapeHtml(i.tradeCategory || "")}</td>
+          <td style="padding:8px 6px; font-size:12px; color:var(--muted);">${escapeHtml(i.roomArea || "")}</td>
+          <td style="padding:8px 6px; font-size:13px; font-weight:700; text-align:right; white-space:nowrap;">
+            ${escapeHtml(String(i.quantity))} ${escapeHtml(i.unit)}
+          </td>
+        </tr>`;
+        })
+        .join("");
+
+      html += `<div class="card" style="padding:0; overflow:hidden; margin-bottom:12px; border:1.5px solid var(--border);">
+        <!-- Template group header -->
+        <div style="background:var(--card-light); padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:10px; border-bottom:1.5px solid var(--border);">
+          <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+            <input type="checkbox" style="width:auto; cursor:pointer; flex-shrink:0;" ${allChecked ? "checked" : ""}
+              title="Select all in this group"
+              onchange="window.toggleGroupSelection('${escapeAttr(group.label)}', this.checked)">
+            <div style="min-width:0;">
+              <div style="font-weight:900; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(group.label)}</div>
+              <div style="font-size:11px; color:var(--muted); margin-top:1px;">${groupItemCount} items</div>
+            </div>
+          </div>
+          <span style="font-size:10px; font-weight:900; background:var(--primary); color:#fff; padding:3px 8px; border-radius:4px; text-transform:uppercase; flex-shrink:0;">Template</span>
+        </div>
+        <!-- Line items table -->
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr style="background:#000; color:#fff;">
+                <th style="padding:6px; width:28px;"></th>
+                <th style="padding:6px 8px; font-size:10px; text-align:left; text-transform:uppercase; font-weight:700;">Description</th>
+                <th style="padding:6px 8px; font-size:10px; text-align:left; text-transform:uppercase; font-weight:700;">Trade</th>
+                <th style="padding:6px 8px; font-size:10px; text-align:left; text-transform:uppercase; font-weight:700;">Area</th>
+                <th style="padding:6px 8px; font-size:10px; text-align:right; text-transform:uppercase; font-weight:700;">Qty / Unit</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
+    } else {
+      // ── Ungrouped items (manually added / non-template) ─────────────────
+      group.items.forEach((i) => {
+        const key = `takeoff_item:${i.itemId}`;
+        window.modalRecordCache = window.modalRecordCache || {};
+        window.modalRecordCache[key] = i;
+        const isChecked = selectedTakeOffIds.has(i.itemId);
+        const isHeader = String(i.scopeNotes || "").startsWith("__HEADER__:");
+
+        if (isHeader) {
+          html += `<div class="card" style="background:var(--card-light); border-left:4px solid var(--primary); cursor:default; padding:10px 16px; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <input type="checkbox" style="width:auto; cursor:pointer;" ${isChecked ? "checked" : ""}
+                onclick="event.stopPropagation(); window.toggleTakeOffSelection('${escapeAttr(i.itemId)}', this.checked)">
+              <strong style="font-size:15px; text-transform:uppercase; letter-spacing:0.5px;">${escapeHtml(i.description)}</strong>
+            </div>
+          </div>`;
+        } else {
+          html += `<div class="card" style="cursor:pointer; position:relative; margin-bottom:8px;"
+            onclick="window.openModalWithRecord('takeoff_item', window.modalRecordCache['${key}'])">
+            <div style="display:flex; align-items:start; gap:10px;">
+              <input type="checkbox" style="width:auto; margin-top:2px; cursor:pointer;" ${isChecked ? "checked" : ""}
+                onclick="event.stopPropagation(); window.toggleTakeOffSelection('${escapeAttr(i.itemId)}', this.checked)">
+              <div style="flex:1;">
+                <div style="font-size:14px; font-weight:600;">${escapeHtml(i.description)}</div>
+                <div style="font-size:13px; font-weight:900; margin-top:2px;">${escapeHtml(String(i.quantity))} ${escapeHtml(i.unit)}</div>
+                ${i.tradeCategory ? `<div style="font-size:11px; color:var(--muted); margin-top:3px;">${escapeHtml(i.tradeCategory)}${i.roomArea ? " · " + escapeHtml(i.roomArea) : ""}</div>` : ""}
+                ${i.scopeNotes && !i.scopeNotes.startsWith("__HEADER__:") ? `<div style="font-size:11px; color:var(--muted); margin-top:2px;">${escapeHtml(i.scopeNotes)}</div>` : ""}
+              </div>
+            </div>
+          </div>`;
+        }
+      });
+    }
+  });
+
   container.innerHTML = html;
 }
 
@@ -4333,6 +4726,37 @@ let cache = {
   settings: {},
 };
 let currentSelectedProjectId = null;
+
+// Seed in-memory cache from localStorage backups so the app has data
+// immediately on page load without waiting for the network.
+// Must run here, after `let cache` is declared, to avoid temporal dead zone.
+(function seedCacheFromBackup() {
+  const seeds = [
+    { key: "projects", action: "getProjects", isArray: true },
+    { key: "takeoffs", action: "getTakeOffItems", isArray: true },
+    { key: "progressLogs", action: "getProgressLogs", isArray: true },
+    { key: "snags", action: "getSnags", isArray: true },
+    { key: "vendors", action: "getVendors", isArray: true },
+    { key: "workorders", action: "getWorkOrders", isArray: true },
+    { key: "payments", action: "getPayments", isArray: true },
+    { key: "settings", action: "getSettings", isArray: false },
+  ];
+  seeds.forEach(({ key, action, isArray }) => {
+    try {
+      const raw = localStorage.getItem(`fb_${action}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (
+          isArray ? Array.isArray(parsed) : parsed && typeof parsed === "object"
+        ) {
+          cache[key] = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("seedCacheFromBackup failed for", key, e);
+    }
+  });
+})();
 
 function setCache(newCache) {
   // Deep-merge settings so individual keys (VAT, WHT, Logo…) are never lost
@@ -4706,12 +5130,12 @@ function generateLetterheadHTML() {
 
   return `<div class="letterhead-page" style="
       position: relative;
-      min-height: calc(297mm - 1mm);
+      min-height: calc(297mm - 40mm);
       background: white;
       font-family: 'Calibri', 'Georgia', serif;
       font-size: 12pt;
       color: #000;
-      padding: 10mm 10mm 15mm 15mm;
+      padding: 20mm 20mm 40mm 20mm;
       box-sizing: border-box;
     ">
 
@@ -4720,7 +5144,7 @@ function generateLetterheadHTML() {
       <div style="text-align: right;">
         ${
           logoUrl
-            ? `<img src="${escapeAttr(logoUrl)}" style="height: 120px; max-width: 200px; object-fit: contain; display: block; margin-left: auto;" onerror="this.style.display='none'">`
+            ? `<img src="${escapeAttr(logoUrl)}" style="height: 90px; max-width: 200px; object-fit: contain; display: block; margin-left: auto;" onerror="this.style.display='none'">`
             : `<div style="height:90px;"></div>`
         }
         <div style="font-size: 11pt; margin-top: 10px; color: #000;">${escapeHtml(date)}</div>
@@ -4737,7 +5161,7 @@ function generateLetterheadHTML() {
     <div style="margin-bottom: 16px; font-size: 11pt;">${escapeHtml(salutation)}</div>
 
     <!-- ── TITLE (bold, left-aligned) ── -->
-    ${title ? `<div style="font-weight: 700; font-size: 11pt; margin-bottom: 14px; text-decoration: ">${escapeHtml(title)}</div>` : ""}
+    ${title ? `<div style="font-weight: 700; font-size: 11pt; margin-bottom: 14px; text-decoration: underline;">${escapeHtml(title)}</div>` : ""}
 
     <!-- ── BODY ── -->
     <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 32px;">
@@ -4755,7 +5179,7 @@ function generateLetterheadHTML() {
     <!-- ── FOOTER: pinned to bottom, centred, icon + two phones + email ── -->
     <div style="
         position: absolute;
-        bottom: 5mm;
+        bottom: 12mm;
         left: 20mm;
         right: 20mm;
         border-top: 1px solid #888;
@@ -4932,6 +5356,10 @@ window.showAllBuiltInTemplates = showAllBuiltInTemplates;
 window.shareReport = shareReport;
 window.previewTemplate = previewTemplate;
 window.applyTemplateToProject = applyTemplateToProject;
+window.toggleAllTmplRows = toggleAllTmplRows;
+window.updateTmplGroupCheckbox = updateTmplGroupCheckbox;
+window.applyBulkUnitToTmpl = applyBulkUnitToTmpl;
+window.toggleGroupSelection = toggleGroupSelection;
 window.openSaveAsTemplateModal = openSaveAsTemplateModal;
 window.loadTemplatesSegment = loadTemplatesSegment;
 window.deleteCustomTemplate = deleteCustomTemplate;
@@ -4952,6 +5380,32 @@ window.exportAllTemplatesJSON = exportAllTemplatesJSON;
 window.exportSingleTemplateJSON = exportSingleTemplateJSON;
 window.importTemplatesFromJSON = importTemplatesFromJSON;
 window.openImportTemplatesModal = openImportTemplatesModal;
+window.syncTemplatesToSheet = syncTemplatesToSheet;
+window.loadTemplatesFromSheet = loadTemplatesFromSheet;
+
+async function refreshTemplatesFromSheet() {
+  const btn = document.querySelector(
+    'button[onclick="window.refreshTemplatesFromSheet()"]',
+  );
+  const origHtml = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Refreshing...`;
+    btn.disabled = true;
+  }
+  try {
+    await loadTemplatesFromSheet();
+    loadTemplatesSegment();
+    showSyncToast("✅ Templates refreshed from sheet");
+  } catch (e) {
+    showSyncToast("⚠️ Could not reach sheet. Showing local templates.");
+  } finally {
+    if (btn) {
+      btn.innerHTML = origHtml;
+      btn.disabled = false;
+    }
+  }
+}
+window.refreshTemplatesFromSheet = refreshTemplatesFromSheet;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () =>
@@ -5034,6 +5488,623 @@ window.addEventListener("load", () => {
   showPageWithoutRefresh("dashboard");
   refreshMasterDashboard();
   initPwaInstall();
+
+  // ===== VARIATIONS PATCH =====
+  // Append this to the end of app.bundle.js
+
+  // Inject into GET_ACTION_BY_STORE
+  (function () {
+    const existing = window.GET_ACTION_BY_STORE || {};
+    existing.variations = "getVariations";
+    window.GET_ACTION_BY_STORE = existing;
+  })();
+
+  // Inject into MUTATION_MAP
+  (function () {
+    const existing = window.MUTATION_MAP || {};
+    existing.saveVariation = {
+      store: "variations",
+      idKey: "variationId",
+      mode: "upsert",
+    };
+    existing.updateVariation = {
+      store: "variations",
+      idKey: "variationId",
+      mode: "upsert",
+    };
+    existing.deleteVariation = {
+      store: "variations",
+      idKey: "variationId",
+      mode: "delete",
+    };
+    window.MUTATION_MAP = existing;
+  })();
+
+  // Re-seed cache from backup for variations
+  (function seedVariationsBackup() {
+    try {
+      const raw = localStorage.getItem("fb_getVariations");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const cache = getCache();
+          cache.variations = parsed;
+          setCache(cache);
+        }
+      }
+    } catch (e) {}
+  })();
+
+  // Hook into preloadAllData
+  (function () {
+    const original =
+      window._originalPreloadAllData ||
+      (window._originalPreloadAllData = async function () {});
+    // We rely on the existing preload loop; variations will be fetched on first console load
+  })();
+
+  // Hook switchConsoleSegment
+  (function () {
+    const original = switchConsoleSegment;
+    window.switchConsoleSegment = function (seg) {
+      document
+        .querySelectorAll(".console-tab-window")
+        .forEach((w) => w.classList.remove("active-view"));
+      document
+        .querySelectorAll(".segment-btn")
+        .forEach((b) => b.classList.remove("active"));
+      document
+        .getElementById(`console-seg-${seg}`)
+        .classList.add("active-view");
+      document.getElementById(`seg-btn-${seg}`).classList.add("active");
+      if (seg === "takeoff") loadTakeOffListings();
+      if (seg === "templates") {
+        loadTemplatesSegment();
+        loadTemplatesFromSheet()
+          .then(() => loadTemplatesSegment())
+          .catch(() => {});
+      }
+      if (seg === "progress") loadProgressTimelineFeed();
+      if (seg === "snags") loadSnagsListings();
+      if (seg === "workorders") loadWorkOrdersListings();
+      if (seg === "payments") loadPaymentsListings();
+      if (seg === "variations") loadVariationsListings();
+      if (seg === "pcr") loadPcrView();
+    };
+  })();
+
+  function getNextVariationNumber(projectId) {
+    const suffix = (
+      String(projectId).match(/(\d{1,3})\D*$/)?.[1] || "0"
+    ).padStart(3, "0");
+    const prefix = "VAR-" + suffix + "-";
+    const cache = getCache();
+    const variations = cache.variations || [];
+    let max = 0;
+    variations.forEach((v) => {
+      if (String(v.variationId).startsWith(prefix)) {
+        const num = parseInt(String(v.variationId).substring(prefix.length));
+        if (!isNaN(num) && num > max) max = num;
+      }
+    });
+    return prefix + String(max + 1).padStart(2, "0");
+  }
+
+  async function loadVariationsListings(forceRefresh = false) {
+    const container = document.getElementById("console-variations-list");
+    let cache = getCache();
+    if (forceRefresh || !cache.variationsLoaded) {
+      container.innerHTML = `<p style="text-align:center;padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading variations...</p>`;
+      try {
+        const items = await callApi("getVariations", {
+          projectId: getCurrentProjectId(),
+        });
+        cache = getCache();
+        cache.variations = items || [];
+        cache.variationsLoaded = true;
+        setCache(cache);
+      } catch (e) {
+        console.warn("loadVariationsListings failed:", e);
+      }
+    }
+    const projectId = getCurrentProjectId();
+    const projectVariations = (cache.variations || []).filter(
+      (v) => v.projectId === projectId,
+    );
+    if (!projectVariations.length) {
+      container.innerHTML = `<p style="text-align:center;padding:20px;">No variations recorded.</p>`;
+      return;
+    }
+    container.innerHTML = projectVariations
+      .map((v) => {
+        const key = `variation:${v.variationId}`;
+        window.modalRecordCache = window.modalRecordCache || {};
+        window.modalRecordCache[key] = v;
+        const statusColors = {
+          Draft: "var(--muted)",
+          Submitted: "#fd7e14",
+          Approved: "var(--success)",
+          Rejected: "var(--danger)",
+        };
+        return `<div class="card" style="border-left:6px solid ${statusColors[v.status] || "var(--muted)"};">
+        <div style="display:flex; justify-content:space-between; align-items:start; gap:10px;">
+          <div>
+            <strong style="font-size:18px;">${escapeHtml(v.variationNumber || v.variationId)}</strong>
+            <div style="font-size:13px; font-weight:700; margin-top:2px;">${escapeHtml(v.title)}</div>
+            <div style="font-size:12px; color:var(--muted); margin-top:2px;">${escapeHtml(v.date)} · ${escapeHtml(v.status)}${v.approvedBy ? " · By: " + escapeHtml(v.approvedBy) : ""}</div>
+          </div>
+          <span style="font-size:16px; font-weight:900;">₦${moneyValue(v.total)}</span>
+        </div>
+        ${v.notes ? `<div style="margin-top:8px; font-size:13px; color:var(--muted);">${escapeHtml(v.notes)}</div>` : ""}
+        <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+          <button class="action-btn" style="width:auto; padding:6px 12px; font-size:12px; background:var(--card-light); color:var(--text);" onclick="window.openVariationModal(window.modalRecordCache['${key}'])">
+            <i class="fas fa-edit"></i> Edit
+          </button>
+          <button class="action-btn" style="width:auto; padding:6px 12px; font-size:12px; background:var(--primary);" onclick="window.previewVariationReport('${escapeAttr(v.variationId)}')">
+            <i class="fas fa-file-alt"></i> Report
+          </button>
+        </div>
+      </div>`;
+      })
+      .join("");
+  }
+
+  function openVariationModal(editData = null) {
+    const body = document.getElementById("modalBody");
+    const submit = document.getElementById("modalSubmit");
+    const title = document.getElementById("modalTitle");
+    const overlay = document.getElementById("modalOverlay");
+    const isEdit = !!editData;
+    overlay.style.display = "flex";
+    body.innerHTML = "";
+    submit.disabled = false;
+    submit.innerText = "Save";
+    submit.style.display = "block";
+    currentModalFiles = [];
+
+    const labelStyle =
+      'style="display:block; font-weight:800; margin-top:12px; margin-bottom:4px;"';
+    const largeInput = 'style="width:100%; padding:12px; font-size:16px;"';
+
+    const projectId = getCurrentProjectId();
+    const nextNumber = isEdit
+      ? editData.variationNumber
+      : getNextVariationNumber(projectId);
+
+    let lineItems = [];
+    if (isEdit && editData.lineItems) {
+      try {
+        const parsed = JSON.parse(editData.lineItems);
+        if (Array.isArray(parsed)) lineItems = parsed;
+      } catch (e) {
+        lineItems = [];
+      }
+    }
+
+    const lineItemsHtml = lineItems
+      .map(
+        (item) =>
+          `<tr class="var-line-row">
+      <td style="padding:4px; border-bottom:1px solid var(--border);"><input class="var-line-desc" value="${escapeAttr(item.description || "")}" placeholder="Description" style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px;"></td>
+      <td style="padding:4px; border-bottom:1px solid var(--border); width:60px;"><input class="var-line-qty" type="number" value="${escapeAttr(item.qty || "")}" min="0" step="0.01" style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px; text-align:right;" oninput="window.recalcVariationTotals()"></td>
+      <td style="padding:4px; border-bottom:1px solid var(--border); width:80px;"><input class="var-line-rate" type="number" value="${escapeAttr(item.rate || "")}" min="0" step="0.01" style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px; text-align:right;" oninput="window.recalcVariationTotals()"></td>
+      <td style="padding:4px; border-bottom:1px solid var(--border); width:90px;"><input class="var-line-amt" type="number" value="${escapeAttr(item.amount || 0)}" disabled style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px; text-align:right; background:#f5f5f5;"></td>
+      <td style="padding:4px; border-bottom:1px solid var(--border); width:30px; text-align:center;"><button onclick="this.closest('tr').remove(); window.recalcVariationTotals();" style="background:var(--danger); color:white; border:none; border-radius:6px; cursor:pointer; width:28px; height:28px; font-size:14px;">×</button></td>
+    </tr>`,
+      )
+      .join("");
+
+    title.innerText = isEdit ? "Edit Variation" : "New Variation";
+    body.innerHTML = `
+    <label ${labelStyle}>Variation Number</label>
+    <input value="${escapeAttr(nextNumber)}" disabled style="${largeInput} background:#f0f0f0;">
+    <input type="hidden" id="var_id" value="${escapeAttr(isEdit ? editData.variationId : "")}">
+
+    <label ${labelStyle}>Date</label>
+    <input id="var_date" type="text" value="${escapeAttr(isEdit ? editData.date : todayFormatted())}" ${largeInput}>
+
+    <label ${labelStyle}>Title</label>
+    <input id="var_title" value="${escapeAttr(isEdit ? editData.title : "")}" placeholder="e.g. Additional Balcony Tiling" ${largeInput}>
+
+    <label ${labelStyle}>Status</label>
+    <select id="var_status" ${largeInput}>
+      <option value="Draft" ${isEdit && editData.status === "Draft" ? "selected" : ""}>Draft</option>
+      <option value="Submitted" ${isEdit && editData.status === "Submitted" ? "selected" : ""}>Submitted</option>
+      <option value="Approved" ${isEdit && editData.status === "Approved" ? "selected" : ""}>Approved</option>
+      <option value="Rejected" ${isEdit && editData.status === "Rejected" ? "selected" : ""}>Rejected</option>
+    </select>
+
+    <label ${labelStyle}>Line Items</label>
+    <table style="width:100%; font-size:13px; border-collapse:collapse; margin-bottom:10px;">
+      <thead>
+        <tr style="background:#000; color:#fff;">
+          <th style="padding:6px; text-align:left; font-size:10px; text-transform:uppercase;">Description</th>
+          <th style="padding:6px; text-align:right; font-size:10px; text-transform:uppercase; width:60px;">Qty</th>
+          <th style="padding:6px; text-align:right; font-size:10px; text-transform:uppercase; width:80px;">Rate (₦)</th>
+          <th style="padding:6px; text-align:right; font-size:10px; text-transform:uppercase; width:90px;">Amount (₦)</th>
+          <th style="width:30px;"></th>
+        </tr>
+      </thead>
+      <tbody id="var_line_items_body">${lineItemsHtml}</tbody>
+    </table>
+    <button class="action-btn" style="width:auto; padding:6px 12px; font-size:12px; background:var(--card-light); color:var(--text);" onclick="window.addVariationLineItem()">
+      <i class="fas fa-plus"></i> Add Line Item
+    </button>
+
+    <div style="margin-top:16px; padding:12px; background:var(--card-light); border-radius:12px; border:1.5px solid var(--border);">
+      <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+        <span style="font-weight:700; font-size:13px;">Subtotal</span>
+        <span id="var_subtotal_display" style="font-weight:700; font-size:14px;">₦0.00</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+        <span style="font-weight:700; font-size:13px;">VAT (<span id="var_vat_rate_display">7.5%</span>)</span>
+        <span id="var_vat_display" style="font-weight:700; font-size:14px;">₦0.00</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:8px; border-top:2px solid var(--border);">
+        <span style="font-weight:900; font-size:15px;">Total</span>
+        <span id="var_total_display" style="font-weight:900; font-size:18px; color:var(--primary);">₦0.00</span>
+      </div>
+    </div>
+
+    <label ${labelStyle}>Notes</label>
+    <textarea id="var_notes" rows="2" ${largeInput}>${escapeHtml(isEdit ? editData.notes : "")}</textarea>
+
+    <label ${labelStyle}>Approved By</label>
+    <input id="var_approved_by" value="${escapeAttr(isEdit ? editData.approvedBy : "")}" placeholder="Name of approver" ${largeInput}>
+
+    ${isEdit ? `<button class="action-btn" id="var_delete_btn" style="background:var(--danger); margin-top:10px;">Delete Variation</button>` : ""}
+  `;
+
+    if (isEdit) {
+      document.getElementById("var_delete_btn").onclick = () => {
+        if (confirm("Delete this variation?")) {
+          callApi("deleteVariation", { variationId: editData.variationId })
+            .then(() => {
+              closeModal();
+              loadVariationsListings(true);
+              refreshMasterDashboard();
+              loadProjectConsoleHub(projectId);
+            })
+            .catch(() => {});
+        }
+      };
+    }
+
+    recalcVariationTotals();
+
+    submit.onclick = () => {
+      const title = document.getElementById("var_title").value.trim();
+      if (!title) {
+        alert("Enter a variation title");
+        return;
+      }
+
+      const rows = document.querySelectorAll("#var_line_items_body tr");
+      const lineItems = [];
+      rows.forEach((row) => {
+        const desc = row.querySelector(".var-line-desc").value.trim();
+        if (desc) {
+          const qty = Number(row.querySelector(".var-line-qty").value) || 0;
+          const rate = Number(row.querySelector(".var-line-rate").value) || 0;
+          lineItems.push({
+            description: desc,
+            qty: qty,
+            rate: rate,
+            amount: roundMoney(qty * rate),
+          });
+        }
+      });
+
+      if (!lineItems.length) {
+        alert("Add at least one line item");
+        return;
+      }
+
+      const subtotal = lineItems.reduce((s, i) => s + i.amount, 0);
+      const vat = calculateTax(subtotal, "VAT");
+      const total = roundMoney(subtotal + vat);
+
+      submit.disabled = true;
+      submit.innerText = "Saving...";
+
+      const payload = {
+        variationId: isEdit
+          ? editData.variationId
+          : getNextVariationNumber(projectId),
+        projectId: projectId,
+        variationNumber: isEdit
+          ? editData.variationNumber
+          : getNextVariationNumber(projectId),
+        date: document.getElementById("var_date").value,
+        title: title,
+        status: document.getElementById("var_status").value,
+        lineItems: lineItems,
+        subtotal: subtotal,
+        vat: vat,
+        total: total,
+        notes: document.getElementById("var_notes").value,
+        approvedBy: document.getElementById("var_approved_by").value,
+      };
+
+      callApi(isEdit ? "updateVariation" : "saveVariation", payload)
+        .then(() => {
+          closeModal();
+          loadVariationsListings(true);
+          if (
+            payload.status === "Approved" ||
+            (isEdit && editData.status === "Approved")
+          ) {
+            refreshMasterDashboard();
+            loadProjectConsoleHub(projectId);
+          }
+        })
+        .catch(resetSubmitOnError(submit));
+    };
+  }
+
+  function addVariationLineItem() {
+    const tbody = document.getElementById("var_line_items_body");
+    if (!tbody) return;
+    const row = document.createElement("tr");
+    row.className = "var-line-row";
+    row.innerHTML = `<td style="padding:4px; border-bottom:1px solid var(--border);"><input class="var-line-desc" value="" placeholder="Description" style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px;"></td>
+    <td style="padding:4px; border-bottom:1px solid var(--border); width:60px;"><input class="var-line-qty" type="number" value="" min="0" step="0.01" style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px; text-align:right;" oninput="window.recalcVariationTotals()"></td>
+    <td style="padding:4px; border-bottom:1px solid var(--border); width:80px;"><input class="var-line-rate" type="number" value="" min="0" step="0.01" style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px; text-align:right;" oninput="window.recalcVariationTotals()"></td>
+    <td style="padding:4px; border-bottom:1px solid var(--border); width:90px;"><input class="var-line-amt" type="number" value="0" disabled style="width:100%; padding:8px; font-size:14px; border:1.5px solid var(--border); border-radius:8px; text-align:right; background:#f5f5f5;"></td>
+    <td style="padding:4px; border-bottom:1px solid var(--border); width:30px; text-align:center;"><button onclick="this.closest('tr').remove(); window.recalcVariationTotals();" style="background:var(--danger); color:white; border:none; border-radius:6px; cursor:pointer; width:28px; height:28px; font-size:14px;">×</button></td>`;
+    tbody.appendChild(row);
+  }
+
+  function recalcVariationTotals() {
+    const rows = document.querySelectorAll("#var_line_items_body tr");
+    let subtotal = 0;
+    rows.forEach((row) => {
+      const qty = Number(row.querySelector(".var-line-qty").value) || 0;
+      const rate = Number(row.querySelector(".var-line-rate").value) || 0;
+      const amt = roundMoney(qty * rate);
+      row.querySelector(".var-line-amt").value = amt;
+      subtotal += amt;
+    });
+    subtotal = roundMoney(subtotal);
+    const vat = calculateTax(subtotal, "VAT");
+    const total = roundMoney(subtotal + vat);
+
+    const subEl = document.getElementById("var_subtotal_display");
+    const vatEl = document.getElementById("var_vat_display");
+    const totalEl = document.getElementById("var_total_display");
+    const vatRateEl = document.getElementById("var_vat_rate_display");
+
+    if (subEl) subEl.innerText = "₦" + moneyValue(subtotal);
+    if (vatEl) vatEl.innerText = "₦" + moneyValue(vat);
+    if (totalEl) totalEl.innerText = "₦" + moneyValue(total);
+    if (vatRateEl) vatRateEl.innerText = formatTaxRate(getTaxRate("VAT"));
+  }
+
+  function renderVariationReport(variation, project, settings) {
+    if (settings && settings.data) settings = settings.data;
+
+    let lineItems = [];
+    try {
+      lineItems = JSON.parse(variation.lineItems || "[]");
+    } catch (e) {
+      lineItems = [];
+    }
+
+    const itemRows = lineItems
+      .map(
+        (item) =>
+          `<tr>
+      <td style="border-bottom:1px solid #adb5bd; padding:8px; font-size:12px; vertical-align:top;">${escapeHtml(item.description)}</td>
+      <td style="border-bottom:1px solid #adb5bd; padding:8px; font-size:12px; text-align:right; vertical-align:top;">${escapeHtml(String(item.qty))}</td>
+      <td style="border-bottom:1px solid #adb5bd; padding:8px; font-size:12px; text-align:right; vertical-align:top;">₦${moneyValue(item.rate)}</td>
+      <td style="border-bottom:1px solid #adb5bd; padding:8px; font-size:12px; text-align:right; vertical-align:top; font-weight:700;">₦${moneyValue(item.amount)}</td>
+    </tr>`,
+      )
+      .join("");
+
+    const subtotal = Number(variation.subtotal) || 0;
+    const vat = Number(variation.vat) || 0;
+    const total = Number(variation.total) || 0;
+
+    const signName = settings?.Name_Signed
+      ? escapeHtml(settings.Name_Signed)
+      : "";
+    const signImg = settings?.Sign_Signed
+      ? getDirectImageUrl(settings.Sign_Signed)
+      : "";
+    const includeClientSig =
+      document.getElementById("var-rep-client-sig")?.checked;
+
+    let clientSigBlock = "";
+    if (includeClientSig) {
+      clientSigBlock = `<div style="margin-top: 32px; page-break-inside: avoid; text-align: left; flex:1;">
+      <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; color: #495057;">Client Signatory</div>
+      <div style="display: inline-block; text-align: center;">
+        <div style="border-bottom: 1.5px solid #000; width: 200px; margin: 0 auto 4px auto;"></div>
+        <div style="font-size: 12px; font-weight: 700;">_________________________</div>
+      </div>
+    </div>`;
+    }
+
+    return `<div class="report-page-wrapper">
+    <div class="report-content">
+      ${generateReportHeader("Variation Order", project, settings)}
+      <div style="margin-bottom: 16px; font-size: 12px; line-height: 1.6;">
+        <div><strong>Variation No:</strong> ${escapeHtml(variation.variationNumber || variation.variationId)}</div>
+        <div><strong>Date:</strong> ${escapeHtml(variation.date)}</div>
+        <div><strong>Title:</strong> ${escapeHtml(variation.title)}</div>
+        <div><strong>Status:</strong> ${escapeHtml(variation.status)}${variation.approvedBy ? " · Approved by: " + escapeHtml(variation.approvedBy) : ""}</div>
+      </div>
+      <table class="report-table" style="width:100%; border-collapse: collapse; font-size:12px; margin-bottom: 16px;">
+        <thead>
+          <tr>
+            <th style="background:#000; color:#fff; text-align:left; padding:8px; font-size:10px; text-transform:uppercase;">Description</th>
+            <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:60px;">Qty</th>
+            <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:90px;">Rate (₦)</th>
+            <th style="background:#000; color:#fff; text-align:right; padding:8px; font-size:10px; text-transform:uppercase; width:90px;">Amount (₦)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemRows || '<tr><td colspan="4" style="padding:20px; text-align:center; color:#495057;">No line items</td></tr>'}
+          <tr style="background:#e9ecef; font-weight:900;">
+            <td colspan="3" style="border-bottom:1px solid #adb5bd; padding:8px; font-size:12px; text-align:right;"><strong>Subtotal</strong></td>
+            <td style="border-bottom:1px solid #adb5bd; padding:8px; font-size:12px; text-align:right;">₦${moneyValue(subtotal)}</td>
+          </tr>
+          <tr style="background:#e9ecef;">
+            <td colspan="3" style="border-bottom:1px solid #adb5bd; padding:8px; font-size:12px; text-align:right;"><strong>VAT (${formatTaxRate(getTaxRate("VAT"))})</strong></td>
+            <td style="border-bottom:1px solid #adb5bd; padding:8px; font-size:12px; text-align:right;">₦${moneyValue(vat)}</td>
+          </tr>
+          <tr style="background:#e9ecef; font-weight:900;">
+            <td colspan="3" style="border-bottom:2px solid #000; padding:8px; font-size:12px; text-align:right;"><strong>TOTAL</strong></td>
+            <td style="border-bottom:2px solid #000; padding:8px; font-size:12px; text-align:right; font-weight:900;">₦${moneyValue(total)}</td>
+          </tr>
+        </tbody>
+      </table>
+      ${variation.notes ? `<div style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #adb5bd;"><strong style="font-size: 12px; text-transform: uppercase;">Notes</strong><p style="font-size: 12px; margin-top: 4px; line-height: 1.5;">${escapeHtml(variation.notes)}</p></div>` : ""}
+      <div style="display:flex; gap:24px; flex-wrap:wrap;">
+        <div style="margin-top: 32px; page-break-inside: avoid; text-align: left; flex:1;">
+          <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; color: #495057;">Contractor Signatory</div>
+          <div style="display: inline-block; text-align: center;">
+            ${signImg ? `<div style="margin-bottom: 4px;"><img src="${escapeAttr(signImg)}" style="max-height:50px; max-width:150px; object-fit:contain;" onerror="this.style.display='none'"></div>` : ""}
+            <div style="border-bottom: 1.5px solid #000; width: 200px; margin: 0 auto 4px auto;"></div>
+            <div style="font-size: 12px; font-weight: 700;">${signName || "_________________________"}</div>
+          </div>
+        </div>
+        ${clientSigBlock}
+      </div>
+    </div>
+    ${generateReportFooter()}
+  </div>`;
+  }
+
+  async function previewVariationReport(variationId) {
+    const cache = getCache();
+    const projectId = getCurrentProjectId();
+    const project = cache.projects.find((p) => p.projectId === projectId);
+    const variation = (cache.variations || []).find(
+      (v) => v.variationId === variationId,
+    );
+    if (!variation) return;
+
+    if (!cache.settings || !cache.settings.VAT) {
+      try {
+        const res = await callApi("getSettings", {});
+        cache.settings = res || cache.settings || {};
+        setCache(cache);
+      } catch (e) {}
+    }
+
+    const body = document.getElementById("modalBody");
+    const submit = document.getElementById("modalSubmit");
+    const title = document.getElementById("modalTitle");
+    const overlay = document.getElementById("modalOverlay");
+
+    title.innerText = "Variation Report: " + variation.variationNumber;
+    overlay.style.display = "flex";
+
+    body.innerHTML = `
+    <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; font-weight:700; cursor:pointer;">
+      <input type="checkbox" id="var-rep-client-sig" style="width:auto;" onchange="window.regenerateVariationPreview('${escapeAttr(variationId)}')">
+      Include client signature line
+    </label>
+    <div id="var-report-preview" style="max-height:60vh; overflow-y:auto; border:1px solid var(--border); border-radius:8px;">
+      ${renderVariationReport(variation, project, cache.settings || {})}
+    </div>
+  `;
+
+    submit.style.display = "block";
+    submit.innerText = "Save PDF";
+    submit.onclick = async () => {
+      submit.disabled = true;
+      submit.innerText = "Generating...";
+      const html = renderVariationReport(
+        variation,
+        project,
+        cache.settings || {},
+      );
+      const printContainer = document.getElementById("report-print-container");
+      if (printContainer) printContainer.innerHTML = html;
+
+      const pdf = await generateReportPDF("portrait");
+      if (pdf) {
+        pdf.save(`Variation_${variation.variationNumber || variationId}.pdf`);
+      }
+      submit.disabled = false;
+      submit.innerText = "Save PDF";
+    };
+  }
+
+  function regenerateVariationPreview(variationId) {
+    const cache = getCache();
+    const projectId = getCurrentProjectId();
+    const project = cache.projects.find((p) => p.projectId === projectId);
+    const variation = (cache.variations || []).find(
+      (v) => v.variationId === variationId,
+    );
+    if (!variation) return;
+    const preview = document.getElementById("var-report-preview");
+    if (preview)
+      preview.innerHTML = renderVariationReport(
+        variation,
+        project,
+        cache.settings || {},
+      );
+  }
+
+  async function loadPcrView() {
+    const projectId = getCurrentProjectId();
+    const cache = getCache();
+
+    if (!cache.variationsLoaded) {
+      try {
+        const variations = await callApi("getVariations", { projectId });
+        cache.variations = variations || [];
+        cache.variationsLoaded = true;
+        setCache(cache);
+      } catch (e) {}
+    }
+
+    const projectVariations = (cache.variations || []).filter(
+      (v) => v.projectId === projectId && v.status === "Approved",
+    );
+    const varContainer = document.getElementById("pcr-variations-list");
+    if (!varContainer) return;
+
+    if (!projectVariations.length) {
+      varContainer.innerHTML =
+        '<p style="color:var(--muted); font-size:13px; font-style:italic;">No approved variations.</p>';
+    } else {
+      varContainer.innerHTML = projectVariations
+        .map((v) => {
+          let lineItems = [];
+          try {
+            lineItems = JSON.parse(v.lineItems || "[]");
+          } catch (e) {}
+          return `<div style="padding:10px; background:var(--card-light); border-radius:8px; margin-bottom:8px; border:1px solid var(--border);">
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <strong style="font-size:14px;">${escapeHtml(v.variationNumber || v.variationId)}</strong>
+            <span style="font-size:14px; font-weight:700;">₦${moneyValue(v.total)}</span>
+          </div>
+          <div style="font-size:12px; color:var(--muted); margin-top:2px;">${escapeHtml(v.title)} · ${escapeHtml(v.date)}</div>
+          ${
+            lineItems.length
+              ? `<div style="margin-top:6px; font-size:12px; line-height:1.5;">
+            ${lineItems.map((i) => `• ${escapeHtml(i.description)} (${i.qty} × ₦${moneyValue(i.rate)})`).join("<br>")}
+          </div>`
+              : ""
+          }
+        </div>`;
+        })
+        .join("");
+    }
+  }
+
+  window.openVariationModal = openVariationModal;
+  window.addVariationLineItem = addVariationLineItem;
+  window.recalcVariationTotals = recalcVariationTotals;
+  window.previewVariationReport = previewVariationReport;
+  window.regenerateVariationPreview = regenerateVariationPreview;
+  window.loadPcrView = loadPcrView;
 
   // Pre-load all data lists in the background so reports and dropdowns work immediately
   (async function preloadAllData() {
