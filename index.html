@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <meta charset="UTF-8" />
     <meta
       name="viewport"
@@ -19,7 +20,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=11" />
     <base target="_blank" />
     <base target="_blank" />
   </head>
@@ -205,6 +206,12 @@
       <!-- Reports View -->
       <div id="view-reports" class="page-view">
         <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h3 style="margin:0; font-size:18px; font-weight:800;"><i class="fas fa-chart-bar"></i> Reports</h3>
+            <button class="action-btn" style="width:auto; padding:6px 12px; font-size:12px; background:var(--card-light); color:var(--text);" onclick="window.openPrintLayoutsPage()">
+              <i class="fas fa-paint-brush"></i> Layouts
+            </button>
+          </div>
           <label>Report Type</label>
           <select id="rep-type-sel" onchange="handleReportScopePopulation()">
             <option value="">-- Select Report --</option>
@@ -303,6 +310,11 @@
           </div>
         </div>
         <div id="report-print-container" style="display: none"></div>
+      </div>
+
+      <!-- Print Layouts View -->
+      <div id="view-print-layouts" class="page-view">
+        <div id="print-layouts-container" style="padding:0;"></div>
       </div>
 
       <!-- Letterhead View -->
@@ -450,13 +462,6 @@
             onclick="switchConsoleSegment('takeoff')"
           >
             Take‑Off
-          </button>
-          <button
-            class="segment-btn"
-            id="seg-btn-templates"
-            onclick="switchConsoleSegment('templates')"
-          >
-            Templates
           </button>
           <button
             class="segment-btn"
@@ -630,21 +635,19 @@
           </div>
         </div>
         <div id="console-seg-takeoff" class="console-tab-window page-view">
+          <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+            <button class="action-btn" style="width:auto; padding:8px 16px; font-size:13px; background:var(--primary);" onclick="window.openTemplatesModal()">
+              <i class="fas fa-layer-group"></i> Templates
+            </button>
+            <button class="action-btn" style="width:auto; padding:8px 16px; font-size:13px;" onclick="window.openTakeOff2Modal(null)">
+              <i class="fas fa-plus"></i> New Take‑Off
+            </button>
+          </div>
           <div id="console-takeoff-list"></div>
-          <button
-            class="action-btn"
-            style="margin-top: 10px"
-            onclick="openModal('takeoff_item', null)"
-          >
-            + New Take‑Off
-          </button>
-        </div>
-
-        <div id="console-seg-templates" class="console-tab-window page-view">
-          <div id="console-templates-list"></div>
         </div>
 
         <div id="console-seg-progress" class="console-tab-window page-view">
+          <div id="console-progress-overall" style="text-align:center; margin-bottom:12px; font-size:24px; font-weight:900;"></div>
           <div id="console-progress-feed"></div>
           <button
             class="action-btn"
@@ -796,14 +799,30 @@
             >
           </div>
           <div id="modalBody"></div>
-          <button id="modalSubmit" class="action-btn" style="margin-top: 20px">
-            Save
-          </button>
+          <div id="modalFoot" style="margin-top: 20px;">
+            <button id="modalSubmit" class="action-btn">Save</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <script src="branding.js"></script>
-    <script src="app.bundle.js"></script>
+    <script src="config.js?v=11"></script>
+    <script src="utils.js?v=11"></script>
+    <script src="branding.js?v=11"></script>
+    <script src="db.js?v=11"></script>
+    <script src="backup.js?v=11"></script>
+    <script src="templates.js?v=11"></script>
+    <script src="api.js?v=11"></script>
+    <script src="payment-helpers.js?v=11"></script>
+    <script src="workorder-helpers.js?v=11"></script>
+    <script src="reports.js?v=11"></script>
+    <script src="layouts.js?v=11"></script>
+    <script src="accounts.js?v=11"></script>
+    <script src="modals.js?v=11"></script>
+    <script src="dashboard.js?v=11"></script>
+    <script src="console.js?v=11"></script>
+    <script src="letterhead.js?v=11"></script>
+    <script src="variations.js?v=11"></script>
+    <script src="app.js?v=11"></script>
   </body>
 </html>
